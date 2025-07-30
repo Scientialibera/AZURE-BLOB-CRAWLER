@@ -1,0 +1,17 @@
+# Python dependencies for the file processing microservice
+azure-identity
+azure-storage-blob
+azure-search-documents
+azure-servicebus
+azure-core
+openai
+aiohttp
+uvloop
+requests
+pytz
+
+# Document processing and tokenization
+tiktoken
+PyPDF2
+python-docx
+python-magic

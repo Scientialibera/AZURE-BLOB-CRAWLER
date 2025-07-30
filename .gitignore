@@ -1,0 +1,44 @@
+# Azure
+.azure/
+*.azd/
+
+# Docker
+.dockerignore
+
+# VS Code
+.vscode/
+
+# Environment files
+.env
+.env.local
+deployment-config.json
+.txt
+
+# Logs
+*.log
+
+# Node modules (if using Node.js)
+node_modules/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.env
+.venv/
+
+# .NET
+bin/
+obj/
+*.user
+*.suo
+*.sln.docstates
+
+# OS
+.DS_Store
+Thumbs.db
+test-document-v2.txt
