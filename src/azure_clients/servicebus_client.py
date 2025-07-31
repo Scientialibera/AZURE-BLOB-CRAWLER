@@ -121,7 +121,7 @@ class ServiceBusQueueReceiver:
         logger.info(f"   Queue: {self.queue_name}")
         logger.info(f"   Max Messages: {max_message_count}")
         logger.info(f"   Max Wait Time: {wait_time}s")
-        logger.info(f"   Authorization header: {HTTP_AUTH_BEARER_PREFIX} {self.client.token}..." if self.client.token else "   No token")
+        logger.info(f"   Authorization header: {HTTP_AUTH_BEARER_PREFIX}" if self.client.token else "   No token")
         
         response = requests.post(url, headers=headers, timeout=REQUEST_TIMEOUT_SECONDS)
         
