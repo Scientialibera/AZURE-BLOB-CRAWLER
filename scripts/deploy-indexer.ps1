@@ -76,15 +76,15 @@ try {
 
     # Step 1: Build container image in Azure Container Registry (cloud-native)
     Write-InfoLog "Building container image using Azure Container Registry (cloud build)..."
-    Push-Location src
     try {
         # Set console encoding to UTF-8 to handle special characters
         $originalEncoding = [Console]::OutputEncoding
         [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
         
         # Build without JSON output to avoid encoding issues
-        Write-InfoLog "Starting ACR build process..."
-        az acr build --registry $Config.AcrName --image "$($Config.AppName):latest" .
+        Write-InfoLog "Starting ACR build process for Indexer Service..."
+        # Build from root directory so Dockerfile can access ms/ directory structure
+        az acr build --registry $Config.AcrName --image "$($Config.AppName):latest" --file "ms/indexer-service/Dockerfile" .
         if ($LASTEXITCODE -ne 0) {
             Write-ErrorLog "ACR build failed with exit code: $LASTEXITCODE"
             Write-ErrorLog "This could be due to:"
@@ -110,9 +110,6 @@ try {
     catch {
         Write-ErrorLog "Container build failed: $_"
         exit 1
-    }
-    finally {
-        Pop-Location
     }
 
     # Step 2: Check if Container App already exists

@@ -47,6 +47,18 @@ HTTP_PORT = int(os.getenv('HTTP_PORT', '50051'))  # Server port
 HTTP_HOST = os.getenv('HTTP_HOST', '0.0.0.0')  # Server host
 HTTP_LOCALHOST = os.getenv('HTTP_LOCALHOST', 'localhost')  # Localhost for logging
 
+# ====== MCP SEARCH SERVER CONFIGURATION ======
+MCP_HTTP_PORT = int(os.getenv('MCP_HTTP_PORT', '50052'))  # MCP Search server port
+MCP_SEARCH_TOKEN = os.getenv('MCP_SEARCH_TOKEN')  # Valid token for MCP server (from env var)
+AUTHENTICATED_TENANT_ID = os.getenv('AUTHENTICATED_TENANT_ID')  # Tenant ID for authentication (from env var)
+
+# ====== JWT AUTHENTICATION CONFIGURATION ======
+AZURE_TENANT_ID = os.getenv('AZURE_TENANT_ID')  # Azure AD tenant ID for JWT validation
+AZURE_CLIENT_ID_JWT = os.getenv('AZURE_CLIENT_ID_JWT')  # Expected audience in JWT token
+JWT_ISSUER = os.getenv('JWT_ISSUER', f'https://sts.windows.net/{AZURE_TENANT_ID}/')  # JWT issuer
+JWT_AUDIENCE = os.getenv('JWT_AUDIENCE', AZURE_CLIENT_ID_JWT)  # JWT audience
+JWT_ALGORITHM = os.getenv('JWT_ALGORITHM', 'RS256')  # JWT signature algorithm
+
 # ====== AZURE SERVICE ENDPOINTS AND SCOPES ======
 AZURE_MANAGEMENT_SCOPE = "https://management.azure.com/.default"
 AZURE_SEARCH_SCOPE = "https://search.azure.com/.default"

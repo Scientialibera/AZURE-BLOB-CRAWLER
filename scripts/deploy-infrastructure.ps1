@@ -627,8 +627,11 @@ try {
     Write-Host ""
     Write-Host "=== NEXT STEPS ===" -ForegroundColor Yellow
     Write-Host "Deploy your application (fully automated, cloud-native build):"
-    Write-Host "   .\scripts\deploy-container.ps1"
+    Write-Host "   .\scripts\deploy-indexer.ps1"
 
+    # Get current Azure tenant ID for JWT authentication
+    $AzureTenantId = az account show --query tenantId -o tsv
+    
     # Save configuration for later use
     $Config = @{
         ResourceGroup = $ResourceGroup
@@ -648,6 +651,10 @@ try {
         ManagedIdentityName = $ManagedIdentityName
         ManagedIdentityId = $ManagedIdentityId
         ManagedIdentityClientId = $ManagedIdentityClientId
+        # JWT and MCP Search configuration
+        AzureTenantId = $AzureTenantId
+        McpSearchToken = ""
+        McpJwtAudience = "https://graph.microsoft.com"
     }
     
     $Config | ConvertTo-Json | Out-File "deployment-config.json"

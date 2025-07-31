@@ -37,7 +37,7 @@ try {
 
     $Config = Get-Content $ConfigFile | ConvertFrom-Json
 
-    # Get Container App details
+    # Get Main Container App details
     $app = az containerapp show --name $Config.AppName --resource-group $Config.ResourceGroup --output json 2>$null | ConvertFrom-Json
     
     if (!$app) {
@@ -45,56 +45,90 @@ try {
         exit 1
     }
 
-    # Get revision details
+    # Get MCP Search Container App details (if exists)
+    $mcpApp = $null
+    $mcpAppName = if ($Config.McpAppName) { $Config.McpAppName } else { "mcp-search-app" }
+    $mcpApp = az containerapp show --name $mcpAppName --resource-group $Config.ResourceGroup --output json 2>$null | ConvertFrom-Json
+
+    # Get revision details for main app
     $revisions = az containerapp revision list --name $Config.AppName --resource-group $Config.ResourceGroup --output json | ConvertFrom-Json
 
     Write-Host ""
-    Write-Host "=== CONTAINER APP STATUS ===" -ForegroundColor Cyan
+    Write-Host "=== MAIN CONTAINER APP STATUS ===" -ForegroundColor Cyan
     Write-Host "App Name: $($Config.AppName)"
     Write-Host "Resource Group: $($Config.ResourceGroup)"
     Write-Host "Status: $($app.properties.runningStatus)" -ForegroundColor $(if($app.properties.runningStatus -eq "Running") {"Green"} else {"Yellow"})
     Write-Host "Provisioning State: $($app.properties.provisioningState)"
-    Write-Host ""
-    
-    Write-Host "=== ACCESS INFORMATION ===" -ForegroundColor Cyan
     Write-Host "Public URL: https://$($app.properties.configuration.ingress.fqdn)" -ForegroundColor Green
-    Write-Host "Target Port: $($app.properties.configuration.ingress.targetPort)"
-    Write-Host "Ingress: $($app.properties.configuration.ingress.external)"
     Write-Host ""
+
+    # MCP Search App Status
+    if ($mcpApp) {
+        Write-Host "=== MCP SEARCH SERVICE STATUS ===" -ForegroundColor Cyan
+        Write-Host "App Name: $mcpAppName"
+        Write-Host "Status: $($mcpApp.properties.runningStatus)" -ForegroundColor $(if($mcpApp.properties.runningStatus -eq "Running") {"Green"} else {"Yellow"})
+        Write-Host "Provisioning State: $($mcpApp.properties.provisioningState)"
+        Write-Host "Public URL: https://$($mcpApp.properties.configuration.ingress.fqdn)" -ForegroundColor Green
+        Write-Host "Health Check: https://$($mcpApp.properties.configuration.ingress.fqdn)/health" -ForegroundColor Green
+        Write-Host "API Docs: https://$($mcpApp.properties.configuration.ingress.fqdn)/docs" -ForegroundColor Green
+        Write-Host "Valid Token: [Token from configuration]" -ForegroundColor Yellow
+        Write-Host ""
+    } else {
+        Write-Host "=== MCP SEARCH SERVICE STATUS ===" -ForegroundColor Cyan
+        Write-WarningLog "MCP Search Service not deployed yet"
+        Write-Host "To deploy: .\scripts\deploy-mcp-search.ps1"
+        Write-Host ""
+    }
     
     Write-Host "=== CONTAINER INFORMATION ===" -ForegroundColor Cyan
+    Write-Host "Main App Containers:"
     foreach ($container in $app.properties.template.containers) {
-        Write-Host "Container Name: $($container.name)"
-        Write-Host "Image: $($container.image)" -ForegroundColor Green
-        Write-Host "CPU: $($container.resources.cpu)"
-        Write-Host "Memory: $($container.resources.memory)"
+        Write-Host "  Container Name: $($container.name)"
+        Write-Host "  Image: $($container.image)" -ForegroundColor Green
+        Write-Host "  CPU: $($container.resources.cpu)"
+        Write-Host "  Memory: $($container.resources.memory)"
+    }
+    
+    if ($mcpApp) {
+        Write-Host "MCP Search Containers:"
+        foreach ($container in $mcpApp.properties.template.containers) {
+            Write-Host "  Container Name: $($container.name)"
+            Write-Host "  Image: $($container.image)" -ForegroundColor Green
+            Write-Host "  CPU: $($container.resources.cpu)"
+            Write-Host "  Memory: $($container.resources.memory)"
+        }
     }
     Write-Host ""
     
     Write-Host "=== SCALING INFORMATION ===" -ForegroundColor Cyan
-    Write-Host "Min Replicas: $($app.properties.template.scale.minReplicas)"
-    Write-Host "Max Replicas: $($app.properties.template.scale.maxReplicas)"
-    Write-Host ""
-    
-    Write-Host "=== REVISIONS ===" -ForegroundColor Cyan
-    Write-Host "Total Revisions: $($revisions.Count)"
-    Write-Host "Latest Revision: $($app.properties.latestRevisionName)"
-    foreach ($revision in $revisions | Sort-Object creationTimeStamp -Descending | Select-Object -First 3) {
-        $status = if ($revision.properties.active) { "ACTIVE" } else { "INACTIVE" }
-        $color = if ($revision.properties.active) { "Green" } else { "Yellow" }
-        Write-Host "  - $($revision.name) ($status) - Created: $($revision.properties.creationTimeStamp)" -ForegroundColor $color
+    Write-Host "Main App - Min: $($app.properties.template.scale.minReplicas), Max: $($app.properties.template.scale.maxReplicas)"
+    if ($mcpApp) {
+        Write-Host "MCP Search - Min: $($mcpApp.properties.template.scale.minReplicas), Max: $($mcpApp.properties.template.scale.maxReplicas)"
     }
     Write-Host ""
     
-    # Check if ACR contains the image
+    Write-Host "=== REVISIONS ===" -ForegroundColor Cyan
+    Write-Host "Main App - Total Revisions: $($revisions.Count), Latest: $($app.properties.latestRevisionName)"
+    foreach ($revision in $revisions | Sort-Object creationTimeStamp -Descending | Select-Object -First 2) {
+        $status = if ($revision.properties.active) { "ACTIVE" } else { "INACTIVE" }
+        $color = if ($revision.properties.active) { "Green" } else { "Yellow" }
+        Write-Host "  - $($revision.name) ($status)" -ForegroundColor $color
+    }
+    Write-Host ""
+    
+    # Check if ACR contains the images
     Write-Host "=== CONTAINER REGISTRY ===" -ForegroundColor Cyan
     $repos = az acr repository list --name $Config.AcrName --output json 2>$null | ConvertFrom-Json
     if ($repos -contains "indexer-app") {
-        $tags = az acr repository show-tags --name $Config.AcrName --repository "indexer-app" --output json | ConvertFrom-Json
-        Write-Host "ACR Repository: $($Config.AcrName).azurecr.io/indexer-app"
-        Write-Host "Available Tags: $($tags -join ', ')"
+        Write-Host "✅ Main App Image: $($Config.AcrName).azurecr.io/indexer-app"
     } else {
-        Write-WarningLog "No 'indexer-app' repository found in ACR"
+        Write-WarningLog "❌ No 'indexer-app' repository found in ACR"
+    }
+    
+    if ($repos -contains "mcp-search-service") {
+        Write-Host "✅ MCP Search Image: $($Config.AcrName).azurecr.io/mcp-search-service"
+    } else {
+        Write-WarningLog "❌ No 'mcp-search-service' repository found in ACR"
     }
     Write-Host ""
     

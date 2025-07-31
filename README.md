@@ -1,6 +1,15 @@
-# Azure Event-Driven File Processing Pipeline
+# Azure Event-Driven File Processing Pipeline + MCP Search Service
 
-This solution implements a **high-performance, event-driven microservice architecture** on Azure that automatically processes files as they arrive in blob storage. The pipeline uses Azure Blob Storage, Event Grid, Service Bus, Container Apps, Azure OpenAI, and Azure AI Search.
+This solution implements a **high-performance, event-driven microservice architecture** on Azure that automatically processes files as they arrive in blob storage, plus a secure **MCP (Model Context Protocol) Search Service** for querying processed documents. The pipeline uses Azure Blob Storage, Event Grid, Service Bus, Container Apps, Azure OpenAI, and Azure AI Search.
+
+## What's New
+
+- **MCP Search Service**: Secure REST API for searching processed documents
+- **Token Authentication**: Bearer token security for API access  
+- **Hybrid Search**: Combines keyword and vector similarity search
+- **Advanced Filtering**: Support for Azure Search filter expressions
+- **Rich Metadata**: Returns relevance scores and search analytics
+- **Microservice Architecture**: Two independent, scalable container apps
 
 ## Architecture Overview
 
@@ -12,15 +21,20 @@ This solution implements a **high-performance, event-driven microservice archite
                                                         │
                                                         ▼
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│  Azure AI Search│◀───│ Container Apps  │◀───│  Service Bus    │
-│  (Vector Index) │    │ (Microservice)  │    │ (Concurrent)    │
+│  Azure AI Search│◀───│   Indexer App   │◀───│  Service Bus    │
+│  (Vector Index) │    │ (Container App) │    │ (Concurrent)    │
 └─────────────────┘    └─────────────────┘    └─────────────────┘
-                                ▲
-                                │
-                     ┌─────────────────┐
-                     │ Azure OpenAI    │
-                     │(Custom Domain)  │
-                     └─────────────────┘
+        ▲                         ▲
+        │                         │
+        │              ┌─────────────────┐
+        │              │ Azure OpenAI    │
+        │              │(Custom Domain)  │
+        │              └─────────────────┘
+        │
+        │                         ┌─────────────────┐
+        └─────────────────────────│ MCP Search API  │
+                                  │ (Container App) │
+                                  └─────────────────┘
 ```
 
 ## Key Features
@@ -36,27 +50,99 @@ This solution implements a **high-performance, event-driven microservice archite
 - **Page-Aware Processing**: Keeps PDF pages and DOCX sections intact when possible
 - **Vector Embeddings**: Azure OpenAI integration for semantic search capabilities
 
-### **Enterprise-Grade Reliability**
-- **Advanced Retry Logic**: Handles rate limits, transient failures, and API quotas
-- **Zero-Downtime Processing**: Event-driven architecture with message persistence
-- **Comprehensive Error Handling**: Graceful degradation and detailed logging
-- **Managed Identity Authentication**: Secure, keyless authentication throughout
-
 ### **Production-Ready Features**
 - **Configurable Scaling**: Tune concurrency based on your Azure quotas
 - **Detailed Telemetry**: Comprehensive logging with performance metrics
 - **Manual Processing API**: Test endpoint for development and debugging
 
+### **MCP Search Service**
+- **Token-Based Authentication**: Secure API access using Bearer tokens
+- **Hybrid Search**: Combines keyword search with vector similarity search
+- **Real-Time Querying**: Direct access to processed documents via REST API
+- **Advanced Filtering**: Support for Azure Search filter expressions
+- **Production Ready**: Containerized service with health checks and monitoring
+
 ## Components
 
+### **Core Infrastructure**
 1. **Azure Blob Storage**: Landing zone for files to be processed
 2. **Azure Event Grid**: Publishes blob creation events
 3. **Azure Service Bus**: Reliable message queue for event processing
-4. **Azure Container Apps**: Hosts the file processing microservice
-5. **Azure Service Bus SDK**: Direct SDK integration for queue message processing
-6. **Azure AI Search**: Indexes processed file content with vector embeddings
-7. **Azure OpenAI**: Generates embeddings for semantic search capabilities
-8. **Azure Container Registry**: Stores container images
+4. **Azure Container Apps**: Hosts both microservices (indexer + MCP search)
+5. **Azure AI Search**: Indexes processed file content with vector embeddings
+6. **Azure OpenAI**: Generates embeddings for semantic search capabilities
+7. **Azure Container Registry**: Stores container images for both services
+
+### **Microservices**
+8. **Indexer Service** (`indexer-app`): Processes files and creates search indexes
+   - Listens to Service Bus messages for new file events
+   - Extracts content from various file formats
+   - Generates embeddings using Azure OpenAI
+   - Indexes documents in Azure AI Search
+
+9. **MCP Search Service** (`mcp-search-app`): Provides secure search API
+   - Token-based authentication for secure access
+   - Hybrid search combining keyword and vector similarity
+   - RESTful API for external applications
+   - Real-time querying of processed documents
+
+## Project Structure
+
+```
+AZURE-BLOB-CRAWLER/
+├── 📁 ms/                              # Microservices
+│   ├── 📁 indexer-service/             # File processing service
+│   │   ├── indexer_server.py           # Main server application
+│   │   ├── Dockerfile                  # Container definition
+│   │   ├── requirements.txt            # Python dependencies
+│   │   ├── 📁 api/                     # HTTP API handlers
+│   │   │   └── handlers.py             # REST endpoints
+│   │   ├── 📁 processing/              # Document processing
+│   │   │   ├── document_processor.py   # Main processor
+│   │   │   └── file_extractor.py       # File content extraction
+│   │   └── 📁 services/                # Service integrations
+│   │       └── servicebus_processor.py # Service Bus handling
+│   │
+│   ├── 📁 mcp-search-service/          # MCP Search API service
+│   │   ├── mcp_search_server.py        # MCP search server
+│   │   ├── Dockerfile                  # Container definition
+│   │   └── requirements.txt            # Python dependencies
+│   │
+│   └── 📁 shared/                      # Shared libraries
+│       ├── 📁 azure_clients/           # Azure service clients
+│       │   ├── auth.py                 # Managed identity auth
+│       │   ├── blob_client.py          # Blob storage client
+│       │   ├── openai_client.py        # OpenAI API client
+│       │   ├── search_client.py        # Azure Search client
+│       │   └── servicebus_client.py    # Service Bus client
+│       ├── 📁 config/                  # Configuration
+│       │   └── settings.py             # Environment settings
+│       └── 📁 utils/                   # Utilities
+│           ├── chunking.py             # Text chunking logic
+│           └── retry.py                # Retry mechanisms
+│
+├── 📁 scripts/                         # Deployment scripts
+│   ├── deploy-all.ps1                  # Master deployment
+│   ├── deploy-infrastructure.ps1       # Azure resources
+│   ├── deploy-indexer.ps1            # Indexer service
+│   ├── deploy-mcp-search.ps1          # MCP search service
+│   ├── get-deployment-status.ps1       # Status checker
+│   └── validate-infrastructure.ps1     # Infrastructure validator
+│
+├── 📁 docs/                            # Documentation
+│   ├── CRUD_OPERATIONS.md             # Search API operations
+│   └── MCP_SEARCH_SERVICE.md          # MCP service guide
+│
+├── 📁 examples/                        # Example code
+│   ├── crud_examples.py               # Search examples
+│   └── test_mcp_search.py             # MCP testing script
+│
+├── 📁 index_definiton/                # Search index schema
+│   └── index.json                     # Azure Search index definition
+│
+├── deployment-config.json             # Deployment configuration
+└── README.md                          # This file
+```
 
 ## Supported File Types
 
@@ -101,7 +187,7 @@ The service implements intelligent chunking based on file type:
    
    # Or use individual scripts
    .\scripts\deploy-infrastructure.ps1
-   .\scripts\deploy-container.ps1
+   .\scripts\deploy-indexer.ps1
    ```
 
 3. **Verify deployment**:
@@ -123,18 +209,124 @@ The service implements intelligent chunking based on file type:
 
 2. **Monitor processing**:
    ```bash
-   # Check container logs
+   # Check indexer service logs
    az containerapp logs show \
-     --name <app-name> \
+     --name indexer-app \
      --resource-group <resource-group>
    
-   # Check health endpoint  
-   curl https://<app-url>/health
+   # Check indexer health endpoint  
+   curl https://<indexer-app-url>/health
    ```
 
-3. **Verify indexing in Azure AI Search**:
+3. **Search processed documents** using MCP Search Service:
+   ```bash
+   # Basic search
+   curl -X GET "https://<mcp-app-url>/search?query=your search terms" \
+     -H "Authorization: Bearer "
+   
+   # Search with filters
+   curl -X GET "https://<mcp-app-url>/search" \
+     -H "Authorization: Bearer " \
+     -G \
+     --data-urlencode 'query=machine learning' \
+     --data-urlencode 'filters={"content": "search.score() gt 0.5"}' \
+     --data-urlencode 'top=10'
+   ```
+
+4. **Verify indexing in Azure AI Search**:
    - Navigate to Azure Portal → Search Service → Search Explorer
    - Query for your document content
+
+## MCP Search Service
+
+The **MCP (Model Context Protocol) Search Service** provides a secure, token-authenticated REST API for searching through processed documents using hybrid search capabilities.
+
+### **Features**
+- **Token Authentication**: Secure access using Bearer tokens
+- **Hybrid Search**: Combines traditional keyword search with vector similarity
+- **Real-time**: Direct querying of indexed documents
+- **Advanced Filtering**: Support for Azure Search filter expressions
+- **Rich Results**: Returns documents with relevance scores and metadata
+
+### **API Endpoints**
+
+#### Search Documents
+```http
+GET /search?query={query}&filters={filters}&top={top}&skip={skip}
+Authorization: Bearer 
+```
+
+**Parameters:**
+- `query` (required): Search query string
+- `filters` (optional): JSON object with Azure Search filter expressions
+- `top` (optional): Number of results (default: 10, max: 1000)
+- `skip` (optional): Results to skip for pagination (default: 0)
+
+#### Health Check
+```http
+GET /health
+```
+Returns service health and configuration status.
+
+#### Readiness Check
+```http
+GET /ready
+```
+Returns client initialization status.
+
+### **Example Usage**
+
+```bash
+# Basic search
+curl -X GET "https://mcp-search-app.azurecontainerapps.io/search?query=machine learning" \
+  -H "Authorization: Bearer "
+
+# Advanced search with filters
+curl -X GET "https://mcp-search-app.azurecontainerapps.io/search" \
+  -H "Authorization: Bearer " \
+  -G \
+  --data-urlencode 'query=azure cloud' \
+  --data-urlencode 'filters={"content": "search.score() gt 0.7"}' \
+  --data-urlencode 'top=5'
+
+# Search with pagination
+curl -X GET "https://mcp-search-app.azurecontainerapps.io/search?query=documents&top=10&skip=20" \
+  -H "Authorization: Bearer "
+```
+
+### **Response Format**
+```json
+{
+  "value": [
+    {
+      "id": "doc123",
+      "content": "Document content with search terms...",
+      "vector": [0.1, 0.2, 0.3, ...],
+      "@search.score": 0.85
+    }
+  ],
+  "@odata.count": 42,
+  "search_metadata": {
+    "query": "machine learning",
+    "filters_applied": "search.score() gt 0.7",
+    "has_vector_search": true,
+    "vector_dimensions": 1536,
+    "timestamp": "2024-07-31T12:00:00Z"
+  }
+}
+```
+
+### **Testing MCP Search Service**
+Use the provided test script:
+```bash
+# Test your deployed MCP service
+python examples/test_mcp_search.py https://your-mcp-app.azurecontainerapps.io
+
+# Test locally
+python examples/test_mcp_search.py http://localhost:50052
+```
+
+For detailed documentation, see [docs/MCP_SEARCH_SERVICE.md](docs/MCP_SEARCH_SERVICE.md).
 
 ## Configuration
 
@@ -176,22 +368,33 @@ EMBEDDING_VECTOR_DIMENSION=1536    # text-embedding-ada-002 dimensions
 
 # Azure Search settings  
 SEARCH_API_VERSION=2024-07-01      # Latest search API version
+
+# MCP Search Service settings
+MCP_HTTP_PORT=50052                # MCP service port
+AUTHENTICATED_TENANT_ID=  # Valid auth token
 ```
 
 ## Monitoring & Observability
 
 ### **Health Endpoints**
-- **Health Check**: `GET /health` - Basic service health with configuration
-- **Readiness Check**: `GET /ready` - Client initialization status
-- **Manual Processing**: `POST /process` - Test endpoint for debugging
+- **Indexer Service**:
+  - Health Check: `GET /health` - Basic service health with configuration
+  - Readiness Check: `GET /ready` - Client initialization status
+  - Manual Processing: `POST /process` - Test endpoint for debugging
+- **MCP Search Service**:
+  - Health Check: `GET /health` - Service health and configuration
+  - Readiness Check: `GET /ready` - Client initialization status
+  - Search API: `GET /search` - Secure search endpoint with token auth
 
 ### **Performance Metrics**
-The service provides detailed logging for:
-- **Processing Times**: Per-file and per-chunk timing
-- **Token Statistics**: Token counts and chunk distributions  
-- **Concurrency Stats**: Success/failure rates for concurrent operations
-- **Rate Limit Events**: Automatic backoff and recovery times
-- **API Response Details**: Full request/response logging for debugging
+The services provide detailed logging for:
+- **Processing Times**: Per-file and per-chunk timing (Indexer)
+- **Token Statistics**: Token counts and chunk distributions (Indexer)
+- **Concurrency Stats**: Success/failure rates for concurrent operations (Indexer)
+- **Rate Limit Events**: Automatic backoff and recovery times (Indexer)
+- **Search Performance**: Query execution times and result counts (MCP Search)
+- **Authentication Events**: Token validation success/failure (MCP Search)
+- **API Response Details**: Full request/response logging for debugging (Both)
 
 ## Security & Authentication
 
@@ -254,8 +457,10 @@ CHUNK_MAX_TOKENS=6000
 | **Rate Limiting** | 429 errors, processing delays | Adjust `CONCURRENT_*` settings downward |
 | **Memory Issues** | Container restarts, OOM errors | Reduce `CHUNK_MAX_TOKENS` or file size limits |
 | **Authentication Failures** | Token errors, 401/403 responses | Verify managed identity RBAC assignments |
-| **Processing Stuck** | Messages in queue, no progress | Check container logs for specific errors |
+| **Processing Stuck** | Messages in queue, no progress | Check indexer container logs for specific errors |
 | **Embedding Failures** | Zero vectors in search index | Verify OpenAI custom domain and model deployment |
+| **MCP Auth Failures** | 401 Unauthorized from MCP API | Check Bearer token: `` |
+| **Search Timeouts** | MCP search API timeouts | Check Azure Search service health and quota limits |
 
 ### **Diagnostic Commands**
 ```bash
@@ -266,7 +471,12 @@ CHUNK_MAX_TOKENS=6000
 .\scripts\validate-infrastructure.ps1
 
 # View real-time logs
-az containerapp logs show --name <app-name> --resource-group <rg-name> --follow
+az containerapp logs show --name indexer-app --resource-group <rg-name> --follow
+az containerapp logs show --name mcp-search-app --resource-group <rg-name> --follow
+
+# Test MCP Search Service
+curl -X GET "https://<mcp-app-url>/search?query=test" \
+  -H "Authorization: Bearer "
 
 # Test OpenAI connectivity
 curl -X POST "https://<openai-endpoint>/openai/deployments/text-embedding-ada-002/embeddings" \

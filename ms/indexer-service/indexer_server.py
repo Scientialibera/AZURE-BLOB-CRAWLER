@@ -1,7 +1,7 @@
 """
-Azure File Processing Microservice - Main Application Entry Point
+Azure File Processing Microservice - Indexer Server
 
-This is the main entry point for the Azure File Processing Microservice.
+This is the main entry point for the Azure File Processing Indexer Service.
 It orchestrates the initialization of all components and starts the HTTP server
 and Service Bus processing.
 
@@ -15,7 +15,17 @@ Features:
 
 import asyncio
 import logging
+import sys
+import os
 from aiohttp import web
+
+# Add shared modules to path
+shared_path = os.path.join(os.path.dirname(__file__), 'shared')
+if os.path.exists(shared_path):
+    sys.path.append(shared_path)
+else:
+    # Fallback for development environment
+    sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'shared'))
 
 from config.settings import (
     HTTP_HOST, HTTP_PORT, HTTP_LOCALHOST, SERVICEBUS_NAMESPACE,
