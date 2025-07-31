@@ -346,7 +346,7 @@ try {
             --model-version   "2" `
             --model-format    "OpenAI" `
             --sku-name        "Standard" `
-            --sku-capacity    "1"
+            --sku-capacity    "150"
         if ($LASTEXITCODE -ne 0) {
             Write-ErrorLog "Failed to deploy text-embedding-ada-002 model"
             Write-ErrorLog "This could be due to model quota limits. Check your OpenAI service quotas."

@@ -2,7 +2,7 @@
 # This script deploys the complete solution: infrastructure + application
 
 param(
-    [string]$Prefix = "indexacas$(Get-Date -Format 'MMdd')",
+    [string]$Prefix = "indexaca1$(Get-Date -Format 'MMdd')",
     [string]$Location = "eastus 2",
     [switch]$InfrastructureOnly = $false
 )
