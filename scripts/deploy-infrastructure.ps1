@@ -2,7 +2,7 @@
 # This script deploys the infrastructure components without requiring Docker initially
 
 param(
-    [string]$Prefix = "indexeast2$(Get-Date -Format 'MMdd')",
+    [string]$Prefix = "indexa1$(Get-Date -Format 'MMdd')",
     [string]$Location = "eastus 2"
 )
 
