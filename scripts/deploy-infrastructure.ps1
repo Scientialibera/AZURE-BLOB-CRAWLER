@@ -265,6 +265,7 @@ try {
     }
 
     $SubscriptionId = az account show --query id -o tsv
+    $TenantId = az account show --query tenantId -o tsv
     $QueueId = "/subscriptions/$SubscriptionId/resourceGroups/$ResourceGroup/providers/Microsoft.ServiceBus/namespaces/$ServiceBusNamespace/queues/$QueueName"
 
     Write-SuccessLog "Service Bus configuration completed"
@@ -648,6 +649,8 @@ try {
         ManagedIdentityName = $ManagedIdentityName
         ManagedIdentityId = $ManagedIdentityId
         ManagedIdentityClientId = $ManagedIdentityClientId
+        TenantId = $TenantId
+        SubscriptionId = $SubscriptionId
     }
     
     $Config | ConvertTo-Json | Out-File "deployment-config.json"
