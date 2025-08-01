@@ -21,6 +21,7 @@ AZURE_CLIENT_ID = os.getenv("AZURE_CLIENT_ID")  # User-assigned managed identity
 # ====== API VERSIONS ======
 OPENAI_API_VERSION = os.getenv('OPENAI_API_VERSION', '2023-05-15')  # Match AI Foundry version
 SEARCH_API_VERSION = os.getenv('SEARCH_API_VERSION', '2024-07-01')
+STORAGE_API_VERSION = os.getenv('STORAGE_API_VERSION', '2023-11-03')  # Azure Storage REST API version
 OPENAI_EMBEDDING_MODEL = os.getenv('OPENAI_EMBEDDING_MODEL', 'text-embedding-ada-002')
 
 # ====== TOKEN LIMITS AND CHUNKING ======
@@ -99,7 +100,9 @@ HTTP_SUCCESS_CODES = [200, 201]
 
 # ====== SEARCH API CONSTANTS ======
 SEARCH_ACTION_UPLOAD = 'upload'
+SEARCH_ACTION_DELETE = 'delete'
 SEARCH_DOCS_INDEX_PATH = '/indexes/{}/docs/index'
+SEARCH_DOCS_SEARCH_PATH = '/indexes/{}/docs/search'
 OPENAI_EMBEDDINGS_PATH = '/openai/deployments/{}/embeddings'
 
 # ====== DOCUMENT FIELD NAMES ======

@@ -43,3 +43,4 @@ obj/
 Thumbs.db
 test-document-v2.txt
 goog.pdf
+*.pdf

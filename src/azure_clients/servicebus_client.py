@@ -9,13 +9,13 @@ import json
 import logging
 import requests
 from typing import List, Dict, Any, Optional
-from datetime import datetime, timezone
+from datetime import datetime
 
 from azure_clients.auth import AzureClientBase
 from utils.retry import retry_logic
 from config.settings import (
     REQUEST_TIMEOUT_SECONDS, MAX_RETRIES, RETRY_DELAY_SECONDS,
-    HTTP_AUTH_BEARER_PREFIX, AZURE_SERVICEBUS_SCOPE, SERVICEBUS_MAX_MESSAGES,
+     AZURE_SERVICEBUS_SCOPE, SERVICEBUS_MAX_MESSAGES,
     SERVICEBUS_WAIT_TIME
 )
 
@@ -118,8 +118,7 @@ class ServiceBusQueueReceiver:
         response = requests.post(url, headers=headers, timeout=REQUEST_TIMEOUT_SECONDS)
         
         # Log response details
-        logger.info(f"   Service Bus Receive Response - Status: {response.status_code}")
-        logger.info(f"   Response headers: {dict(response.headers)}")
+        logger.info(f"   Status: {response.status_code}")
         
         # Handle no messages available (not an error)
         if response.status_code == 204:

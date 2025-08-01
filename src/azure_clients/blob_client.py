@@ -7,13 +7,14 @@ authentication and file download capabilities.
 
 import logging
 import requests
+from datetime import datetime, timezone
 from typing import Tuple, Optional
 
 from azure_clients.auth import AzureClientBase
 from utils.retry import retry_logic
 from config.settings import (
     REQUEST_TIMEOUT_SECONDS, MAX_RETRIES, RETRY_DELAY_SECONDS, 
-    HTTP_AUTH_BEARER_PREFIX, AZURE_STORAGE_SCOPE
+    HTTP_AUTH_BEARER_PREFIX, AZURE_STORAGE_SCOPE, STORAGE_API_VERSION
 )
 
 logger = logging.getLogger(__name__)
@@ -38,6 +39,20 @@ class DirectBlobClient(AzureClientBase):
         super().__init__(credential, AZURE_STORAGE_SCOPE)
         self.account_url = account_url.rstrip('/')
         
+    async def _get_storage_headers(self) -> dict:
+        """
+        Prepare headers for Azure Storage REST API calls
+        
+        Returns:
+            dict: HTTP headers with authorization and required Azure Storage headers
+        """
+        await self._refresh_token()
+        return {
+            "Authorization": f"{HTTP_AUTH_BEARER_PREFIX} {self.token}",
+            "x-ms-version": STORAGE_API_VERSION,
+            "x-ms-date": datetime.now(timezone.utc).strftime('%a, %d %b %Y %H:%M:%S GMT')
+        }
+        
     @retry_logic(max_retries=MAX_RETRIES, delay=RETRY_DELAY_SECONDS)
     async def get_blob_properties(self, container_name: str, blob_name: str) -> dict:
         """
@@ -54,38 +69,22 @@ class DirectBlobClient(AzureClientBase):
             Exception: If API call fails after all retries
         """
         url = f"{self.account_url}/{container_name}/{blob_name}"
-        headers = await self._get_headers()
-        
-        # Log detailed information about the request
-        logger.info(f"   START BLOB Properties Request:")
-        logger.info(f"   URL: {url}")
-        logger.info(f"   Container: {container_name}")
-        logger.info(f"   Blob: {blob_name}")
-        logger.info(f"   Authorization header: {HTTP_AUTH_BEARER_PREFIX} {self.token}..." if self.token else "   No token")
+        headers = await self._get_storage_headers()
         
         response = requests.head(url, headers=headers, timeout=REQUEST_TIMEOUT_SECONDS)
         
-        # Log response details
-        logger.info(f"   Blob Properties Response - Status: {response.status_code}")
-        logger.info(f"   Response headers: {dict(response.headers)}")
-        
         if response.status_code != 200:
-            logger.error(f"   Blob Properties API Error: {response.status_code}")
-            logger.error(f"   Response text: {response.text}")
+            logger.error(f"Blob Properties API Error: {response.status_code} - {response.text}")
         
         response.raise_for_status()
         
-        # Extract properties from headers
-        properties = {
+        return {
             'size': int(response.headers.get('Content-Length', 0)),
             'content_type': response.headers.get('Content-Type', ''),
             'last_modified': response.headers.get('Last-Modified', ''),
             'etag': response.headers.get('ETag', ''),
             'content_encoding': response.headers.get('Content-Encoding', ''),
         }
-        
-        logger.info(f"   Blob Properties successful - Size: {properties['size']} bytes")
-        return properties
         
     @retry_logic(max_retries=MAX_RETRIES, delay=RETRY_DELAY_SECONDS)
     async def download_blob(self, container_name: str, blob_name: str) -> bytes:
@@ -103,31 +102,15 @@ class DirectBlobClient(AzureClientBase):
             Exception: If API call fails after all retries
         """
         url = f"{self.account_url}/{container_name}/{blob_name}"
-        headers = await self._get_headers()
-        
-        # Log detailed information about the request
-        logger.info(f"   START BLOB Download Request:")
-        logger.info(f"   URL: {url}")
-        logger.info(f"   Container: {container_name}")
-        logger.info(f"   Blob: {blob_name}")
-        logger.info(f"   Authorization header: {HTTP_AUTH_BEARER_PREFIX} {self.token}..." if self.token else "   No token")
+        headers = await self._get_storage_headers()
         
         response = requests.get(url, headers=headers, timeout=REQUEST_TIMEOUT_SECONDS)
         
-        # Log response details
-        logger.info(f"   Blob Download Response - Status: {response.status_code}")
-        logger.info(f"   Content-Length: {response.headers.get('Content-Length', 'Unknown')}")
-        logger.info(f"   Content-Type: {response.headers.get('Content-Type', 'Unknown')}")
-        
         if response.status_code != 200:
-            logger.error(f"   Blob Download API Error: {response.status_code}")
-            logger.error(f"   Response text: {response.text}")
+            logger.error(f"Blob Download API Error: {response.status_code} - {response.text}")
         
         response.raise_for_status()
-        
-        content = response.content
-        logger.info(f"   Blob Download successful - Downloaded {len(content)} bytes")
-        return content
+        return response.content
         
     def get_blob_client(self, container: str, blob: str) -> 'BlobClientWrapper':
         """
