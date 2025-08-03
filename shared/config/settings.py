@@ -16,7 +16,11 @@ SERVICEBUS_QUEUE_NAME = os.getenv('SERVICEBUS_QUEUE_NAME', 'indexqueue')
 
 # ====== AUTHENTICATION CONFIGURATION ======
 TOKEN_LF = int(os.getenv('TOKEN_LIFETIME_MINUTES', '45'))  # Token lifetime in minutes
+TOKEN_ACQUISITION_TIMEOUT_SECONDS = int(os.getenv('TOKEN_ACQUISITION_TIMEOUT_SECONDS', '30'))  # Timeout for token acquisition
+TOKEN_PRE_WARMING_ENABLED = os.getenv('TOKEN_PRE_WARMING_ENABLED', 'true').lower() == 'true'  # Enable token pre-warming at startup
+DELETE_BLOB_AFTER_PROCESSING = os.getenv('DELETE_BLOB_AFTER_PROCESSING', 'true').lower() == 'true'  # Delete blob after successful processing
 AZURE_CLIENT_ID = os.getenv("AZURE_CLIENT_ID")  # User-assigned managed identity client ID
+AZURE_TENANT_ID = os.getenv("AZURE_TENANT_ID")  # Azure tenant ID for token validation
 
 # ====== API VERSIONS ======
 OPENAI_API_VERSION = os.getenv('OPENAI_API_VERSION', '2023-05-15')  # Match AI Foundry version
@@ -38,6 +42,10 @@ MAX_PAGES_PER_CHUNK = int(os.getenv('MAX_PAGES_PER_CHUNK', '10'))  # For PDF/DOC
 MAX_RETRIES = int(os.getenv('MAX_RETRIES', '3'))
 RETRY_DELAY_SECONDS = int(os.getenv('RETRY_DELAY_SECONDS', '2'))
 REQUEST_TIMEOUT_SECONDS = int(os.getenv('REQUEST_TIMEOUT_SECONDS', '60'))
+# HTTP status codes that indicate permanent failures and should not be retried
+# Default: 400 (Bad Request), 401 (Unauthorized), 403 (Forbidden), 404 (Not Found), 
+#          405 (Method Not Allowed), 409 (Conflict), 422 (Unprocessable Entity)
+SKIP_RETRY_CODES = [int(code.strip()) for code in os.getenv('SKIP_RETRY_CODES', '400,401,403,404,405,409,422').split(',') if code.strip()]
 
 # ====== RATE LIMIT HANDLING ======
 RATE_LIMIT_BASE_WAIT = int(os.getenv('RATE_LIMIT_BASE_WAIT', '60'))  # Base wait time for rate limits
@@ -116,6 +124,19 @@ TOKEN_PREVIEW_LENGTH = int(os.getenv('TOKEN_PREVIEW_LENGTH', '20'))  # Length of
 VECTOR_DISPLAY_TEXT = "[Vector with {} dimensions]"
 DEFAULT_TIMEZONE = os.getenv('DEFAULT_TIMEZONE', 'US/Eastern')  # For logging timestamps
 
+# Logging verbosity controls
+VERBOSE_RETRY_LOGGING = os.getenv('VERBOSE_RETRY_LOGGING', 'false').lower() == 'true'  # Log all retry attempts
+VERBOSE_AUTH_LOGGING = os.getenv('VERBOSE_AUTH_LOGGING', 'false').lower() == 'true'  # Log token checking details
+VERBOSE_BATCH_LOGGING = os.getenv('VERBOSE_BATCH_LOGGING', 'True').lower() == 'true'  # Log detailed batch results
+
 # ====== PROCESSING INTERVALS ======
 MAIN_LOOP_SLEEP_SECONDS = int(os.getenv('MAIN_LOOP_SLEEP_SECONDS', '3600'))  # 1 hour
 ERROR_RETRY_SLEEP_SECONDS = int(os.getenv('ERROR_RETRY_SLEEP_SECONDS', '5'))  # Error retry delay
+
+# ====== MCP SERVER CONFIGURATION ======
+MCP_SERVER_NAME = os.getenv('MCP_SERVER_NAME', 'azure-search-mcp')
+MCP_SERVER_VERSION = os.getenv('MCP_SERVER_VERSION', '1.0.0')
+MCP_PORT = int(os.getenv('MCP_PORT', '8080'))  # MCP server port
+SEARCH_DEFAULT_TOP = int(os.getenv('SEARCH_DEFAULT_TOP', '10'))  # Default number of search results
+SEARCH_MAX_TOP = int(os.getenv('SEARCH_MAX_TOP', '100'))  # Maximum number of search results
+EXCLUDED_FIELDS = os.getenv('EXCLUDED_FIELDS', 'vector').split(',')  # Fields to exclude from search results

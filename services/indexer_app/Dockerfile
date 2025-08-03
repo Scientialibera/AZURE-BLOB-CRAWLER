@@ -13,14 +13,17 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first for better caching
-COPY requirements.txt .
+COPY services/indexer_app/requirements.txt .
 
 # Upgrade pip and install Python dependencies with verbose output
 RUN pip install --upgrade pip setuptools wheel && \
     pip install --no-cache-dir --verbose -r requirements.txt
 
+# Copy shared libraries
+COPY shared/ /app/shared/
+
 # Copy application code
-COPY . .
+COPY services/indexer_app/app/ /app/
 
 # Create non-root user for security
 RUN useradd --create-home --shell /bin/bash app \

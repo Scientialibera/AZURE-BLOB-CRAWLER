@@ -15,16 +15,23 @@ Features:
 
 import asyncio
 import logging
+import sys
+import os
 from aiohttp import web
 
-from config.settings import (
+# Add shared directory to Python path
+# Handle both Docker environment (/app/shared) and development environment
+shared_path = '/app/shared' if os.path.exists('/app/shared') else os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), 'shared')
+sys.path.insert(0, shared_path)
+
+from shared.config.settings import (
     HTTP_HOST, HTTP_PORT, HTTP_LOCALHOST, SERVICEBUS_NAMESPACE,
     MAIN_LOOP_SLEEP_SECONDS, CHUNK_MAX_TOKENS, EMBEDDING_MAX_TOKENS,
     MAX_FILE_SIZE_MB, CONCURRENT_MESSAGE_PROCESSING, CONCURRENT_FILE_PROCESSING,
     MAX_RETRIES
 )
-from processing import DocumentProcessor
-from services import ServiceBusProcessor
+from shared.processing import DocumentProcessor
+from shared.services import ServiceBusProcessor
 from api import APIHandlers
 
 # Configure logging

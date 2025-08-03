@@ -13,6 +13,7 @@ from docx import Document
 from typing import Tuple, List, Any
 
 from azure_clients import DirectBlobClient
+from utils.exceptions import BlobNotFoundError, ProcessingSkippedError
 
 from config.settings import (
     MAX_FILE_SIZE_MB, SUPPORTED_TEXT_EXTENSIONS, SUPPORTED_STRUCTURED_EXTENSIONS,
@@ -69,8 +70,10 @@ class FileExtractor:
             file_size_mb = blob_properties.size / (1024 * 1024)
             
             if file_size_mb > MAX_FILE_SIZE_MB:
-                logger.warning(f"File {blob_name} ({file_size_mb:.2f}MB) exceeds size limit ({MAX_FILE_SIZE_MB}MB)")
-                return f"File too large: {blob_name} ({file_size_mb:.2f}MB)", []
+                raise ProcessingSkippedError(
+                    f"File size ({file_size_mb:.2f}MB) exceeds limit ({MAX_FILE_SIZE_MB}MB)",
+                    blob_name
+                )
             
             # Download blob content
             blob_data = await blob_client.download_blob()
@@ -102,6 +105,12 @@ class FileExtractor:
                 content_text = f"Binary file: {blob_name} (Size: {file_size_mb:.2f}MB, Type: {file_extension})"
                 return content_text, [content_text]
                 
+        except BlobNotFoundError:
+            # Re-raise blob not found errors to be handled by calling code
+            raise
+        except ProcessingSkippedError:
+            # Re-raise processing skipped errors to be handled by calling code
+            raise
         except Exception as e:
             logger.error(f"Failed to extract content from {blob_name}: {e}")
             raise

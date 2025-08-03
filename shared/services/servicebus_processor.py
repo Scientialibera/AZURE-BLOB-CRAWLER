@@ -12,10 +12,11 @@ from typing import Optional
 
 from azure_clients import create_credential, DirectServiceBusClient
 from processing import DocumentProcessor
+from utils.exceptions import BlobNotFoundError, ProcessingSkippedError, TokenAcquisitionError
 from config.settings import (
     SERVICEBUS_NAMESPACE, SERVICEBUS_QUEUE_NAME, SERVICEBUS_ENDPOINT_SUFFIX,
     SERVICEBUS_MAX_MESSAGES, SERVICEBUS_WAIT_TIME, CONCURRENT_MESSAGE_PROCESSING,
-    ERROR_RETRY_SLEEP_SECONDS
+    ERROR_RETRY_SLEEP_SECONDS, TOKEN_PRE_WARMING_ENABLED, VERBOSE_BATCH_LOGGING
 )
 
 logger = logging.getLogger(__name__)
@@ -62,6 +63,15 @@ class ServiceBusProcessor:
                     max_wait_time=SERVICEBUS_WAIT_TIME
                 )
                 logger.info(f"   INITIALIZED Service Bus client for {SERVICEBUS_NAMESPACE}")
+                
+                # Pre-warm Service Bus token (if enabled)
+                if TOKEN_PRE_WARMING_ENABLED and self.servicebus_client:
+                    logger.info("   Pre-warming Service Bus token...")
+                    try:
+                        await self.servicebus_client.pre_warm_token()
+                        logger.info("   Service Bus token pre-warming successful")
+                    except Exception as e:
+                        logger.warning(f"   Service Bus token pre-warming failed: {e}")
             else:
                 logger.info("   Service Bus not configured - using webhook mode only")
                 
@@ -95,7 +105,8 @@ class ServiceBusProcessor:
                     if not received_msgs:
                         continue
                     
-                    logger.info(f"Received {len(received_msgs)} messages for concurrent processing")
+                    if VERBOSE_BATCH_LOGGING:
+                        logger.info(f"Received {len(received_msgs)} messages for concurrent processing")
                     
                     # Process messages concurrently using asyncio.gather with semaphore for rate limiting
                     semaphore = asyncio.Semaphore(CONCURRENT_MESSAGE_PROCESSING)
@@ -108,10 +119,21 @@ class ServiceBusProcessor:
                     tasks = [process_single_message_with_semaphore(msg) for msg in received_msgs]
                     results = await asyncio.gather(*tasks, return_exceptions=True)
                     
-                    # Log results
-                    successful = sum(1 for result in results if result is True)
-                    failed = len(results) - successful
-                    logger.info(f"Batch processing complete - Success: {successful}, Failed: {failed}")
+                    # Log results with more detail only if verbose logging is enabled
+                    if VERBOSE_BATCH_LOGGING:
+                        successful = sum(1 for result in results if result is True)
+                        failed = len(results) - successful
+                        logger.info(f"Batch processing complete - Success: {successful}, Failed: {failed}")
+                        
+                        # Log any specific exceptions for debugging
+                        for i, result in enumerate(results):
+                            if isinstance(result, Exception):
+                                logger.debug(f"Message {i} failed with exception: {result}")
+                    else:
+                        # Only log if there are failures when not in verbose mode
+                        failed_count = sum(1 for result in results if isinstance(result, Exception))
+                        if failed_count > 0:
+                            logger.warning(f"Processed {len(results)} messages - {failed_count} failed")
                     
                 except Exception as e:
                     logger.error(f"Error receiving messages: {e}")
@@ -132,6 +154,9 @@ class ServiceBusProcessor:
         Returns:
             bool: True if processing successful, False otherwise
         """
+        blob_name = "unknown"  # Initialize with default value for logging
+        container_name = "unknown"
+        
         try:
             # Parse message body
             message_body = str(msg)
@@ -141,13 +166,15 @@ class ServiceBusProcessor:
             try:
                 message_data = json.loads(message_body)
             except json.JSONDecodeError:
-                logger.warning(f"Message not in JSON format: {message_body}")
+                logger.warning(f"Message not in JSON format, completing message: {message_body}")
                 await self.servicebus_receiver.complete_message(msg)
+                if VERBOSE_BATCH_LOGGING:
+                    logger.info("Message completed due to invalid JSON format")
                 return True
             
             # Extract blob information
-            blob_name = None
-            container_name = None
+            # blob_name = None  # Remove this line since we initialized above
+            # container_name = None  # Remove this line since we initialized above
             
             # Handle different message formats
             if isinstance(message_data, list) and len(message_data) > 0:
@@ -175,6 +202,8 @@ class ServiceBusProcessor:
             if not blob_name or not container_name:
                 logger.warning(f"Could not extract blob info from message: {message_data}")
                 await self.servicebus_receiver.complete_message(msg)
+                if VERBOSE_BATCH_LOGGING:
+                    logger.info("Message completed due to invalid blob information")
                 return True
             
             # Process the file
@@ -182,12 +211,35 @@ class ServiceBusProcessor:
             
             # Complete the message
             await self.servicebus_receiver.complete_message(msg)
-            logger.info(f"Successfully processed and completed message for {blob_name}")
+            if VERBOSE_BATCH_LOGGING:
+                logger.info(f"Successfully processed and completed message for {blob_name}")
             return True
+            
+        except (BlobNotFoundError, ProcessingSkippedError) as e:
+            # These are expected conditions that don't require retry
+            logger.warning(f"Processing completed with expected condition for {blob_name}: {e}")
+            # Complete the message - don't retry for these conditions
+            try:
+                await self.servicebus_receiver.complete_message(msg)
+                if VERBOSE_BATCH_LOGGING:
+                    logger.info(f"Message marked as completed (skipped) for {blob_name}")
+            except Exception as complete_error:
+                logger.error(f"Failed to complete message after skipping: {complete_error}")
+            return True
+            
+        except TokenAcquisitionError as e:
+            # Token acquisition failures - might be temporary, so abandon for retry
+            logger.error(f"Token acquisition failed for {blob_name}: {e}")
+            try:
+                await self.servicebus_receiver.abandon_message(msg)
+                logger.info(f"Message abandoned for retry due to token acquisition failure: {blob_name}")
+            except Exception as abandon_error:
+                logger.error(f"Failed to abandon message after token error: {abandon_error}")
+            return False
             
         except Exception as e:
             logger.error(f"Error processing message: {e}")
-            # Abandon message to allow retry
+            # Abandon message to allow retry for unexpected errors
             try:
                 await self.servicebus_receiver.abandon_message(msg)
             except Exception as abandon_error:

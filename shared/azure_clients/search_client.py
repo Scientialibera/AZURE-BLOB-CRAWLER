@@ -270,7 +270,7 @@ class DirectSearchClient(AzureClientBase):
         logger.info(f"   START SEARCH Query Request:")
         logger.info(f"   URL: {url}")
         logger.info(f"   Index: {self.index_name}")
-        logger.info(f"   Search Type: {search_type.value}")
+        logger.info(f"   Search Type: {search_type.value if hasattr(search_type, 'value') else search_type}")
         logger.info(f"   Search Text: {search_text}")
         logger.info(f"   Vector Dimensions: {len(vector) if vector else 0}")
         logger.info(f"   Top Results: {top}")

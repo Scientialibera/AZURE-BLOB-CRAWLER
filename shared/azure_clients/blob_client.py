@@ -12,6 +12,7 @@ from typing import Tuple, Optional
 
 from azure_clients.auth import AzureClientBase
 from utils.retry import retry_logic
+from utils.exceptions import BlobNotFoundError
 from config.settings import (
     REQUEST_TIMEOUT_SECONDS, MAX_RETRIES, RETRY_DELAY_SECONDS, 
     HTTP_AUTH_BEARER_PREFIX, AZURE_STORAGE_SCOPE, STORAGE_API_VERSION
@@ -73,7 +74,10 @@ class DirectBlobClient(AzureClientBase):
         
         response = requests.head(url, headers=headers, timeout=REQUEST_TIMEOUT_SECONDS)
         
-        if response.status_code != 200:
+        if response.status_code == 404:
+            # Blob not found - raise specific exception
+            raise BlobNotFoundError(blob_name, container_name, f"Blob not found: {response.status_code}")
+        elif response.status_code != 200:
             logger.error(f"Blob Properties API Error: {response.status_code} - {response.text}")
         
         response.raise_for_status()
@@ -106,11 +110,47 @@ class DirectBlobClient(AzureClientBase):
         
         response = requests.get(url, headers=headers, timeout=REQUEST_TIMEOUT_SECONDS)
         
-        if response.status_code != 200:
+        if response.status_code == 404:
+            # Blob not found - raise specific exception
+            raise BlobNotFoundError(blob_name, container_name, f"Blob not found: {response.status_code}")
+        elif response.status_code != 200:
             logger.error(f"Blob Download API Error: {response.status_code} - {response.text}")
         
         response.raise_for_status()
         return response.content
+        
+    @retry_logic(max_retries=MAX_RETRIES, delay=RETRY_DELAY_SECONDS)
+    async def delete_blob(self, blob_name: str, container_name: str) -> bool:
+        """
+        Delete a blob using direct HTTP call
+        
+        Args:
+            blob_name: Name of the blob to delete
+            container_name: Name of the container
+            
+        Returns:
+            bool: True if deletion was successful, False otherwise
+            
+        Raises:
+            Exception: If API call fails after all retries (except 404)
+        """
+        url = f"{self.account_url}/{container_name}/{blob_name}"
+        headers = await self._get_storage_headers()
+        
+        response = requests.delete(url, headers=headers, timeout=REQUEST_TIMEOUT_SECONDS)
+        
+        if response.status_code == 404:
+            # Blob already doesn't exist - consider this success
+            logger.info(f"Blob {blob_name} already deleted or doesn't exist")
+            return True
+        elif response.status_code == 202:
+            # Successful deletion
+            logger.debug(f"Successfully deleted blob: {blob_name}")
+            return True
+        else:
+            logger.error(f"Blob Delete API Error: {response.status_code} - {response.text}")
+            response.raise_for_status()
+            return False
         
     def get_blob_client(self, container: str, blob: str) -> 'BlobClientWrapper':
         """

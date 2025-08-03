@@ -117,8 +117,10 @@ class ServiceBusQueueReceiver:
         
         response = requests.post(url, headers=headers, timeout=REQUEST_TIMEOUT_SECONDS)
         
-        # Log response details
+        # Log response details for debugging
         logger.info(f"   Status: {response.status_code}")
+        logger.debug(f"   Response headers: {dict(response.headers)}")
+        logger.debug(f"   Response content length: {len(response.content) if response.content else 0}")
         
         # Handle no messages available (not an error)
         if response.status_code == 204:
@@ -139,10 +141,27 @@ class ServiceBusQueueReceiver:
             if not isinstance(response_data, list):
                 response_data = [response_data]
             
-            for msg_data in response_data:
-                # Extract message properties from headers and body
-                message_id = response.headers.get('MessageId', f"msg_{datetime.now().timestamp()}")
-                lock_token = response.headers.get('LockToken')
+            # Get broker properties from response headers
+            broker_properties_header = response.headers.get('BrokerProperties', '{}')
+            try:
+                broker_properties = json.loads(broker_properties_header)
+            except (json.JSONDecodeError, TypeError):
+                broker_properties = {}
+            
+            for i, msg_data in enumerate(response_data):
+                # Extract message properties from headers and broker properties
+                message_id = response.headers.get('MessageId') or broker_properties.get('MessageId') or f"msg_{datetime.now().timestamp()}_{i}"
+                lock_token = response.headers.get('LockToken') or broker_properties.get('LockToken')
+                
+                # If no lock token found, try to extract from individual message data
+                if not lock_token and isinstance(msg_data, dict):
+                    lock_token = msg_data.get('LockToken') or msg_data.get('lockToken')
+                
+                # Log lock token status for debugging
+                if lock_token:
+                    logger.debug(f"   Message {i}: Found lock token: {lock_token}")
+                else:
+                    logger.debug(f"   Message {i}: No lock token found - message may not be properly locked")
                 
                 message = ServiceBusMessage(
                     message_id=message_id,
@@ -156,10 +175,12 @@ class ServiceBusQueueReceiver:
             logger.warning(f"Failed to parse Service Bus response: {e}")
             # Create a simple message from raw response
             if response.content:
+                # Try to extract any lock token from headers
+                lock_token = response.headers.get('LockToken') or response.headers.get('lockToken')
                 message = ServiceBusMessage(
                     message_id=f"msg_{datetime.now().timestamp()}",
                     body=response.text,
-                    lock_token=response.headers.get('LockToken'),
+                    lock_token=lock_token,
                     receiver=self
                 )
                 messages.append(message)
@@ -179,18 +200,21 @@ class ServiceBusQueueReceiver:
             Exception: If API call fails after all retries
         """
         if not message.lock_token:
-            logger.warning("Cannot complete message without lock token")
+            logger.warning(f"Cannot complete message without lock token - Message ID: {message.message_id}")
+            logger.debug(f"Message details: {message}")
+            # In this case, we'll assume the message is already processed and return success
             return
             
         url = f"{self.client.namespace_url}/{self.queue_name}/messages/{message.message_id}/{message.lock_token}"
         headers = await self.client._get_headers()
         
-        logger.info(f"   START SERVICE BUS Complete Message:")
-        logger.info(f"   Message ID: {message.message_id}")
+        logger.debug(f"   START SERVICE BUS Complete Message:")
+        logger.debug(f"   Message ID: {message.message_id}")
+        logger.debug(f"   Lock Token: {message.lock_token}")
         
         response = requests.delete(url, headers=headers, timeout=REQUEST_TIMEOUT_SECONDS)
         
-        logger.info(f"   Complete Message Response - Status: {response.status_code}")
+        logger.debug(f"   Complete Message Response - Status: {response.status_code}")
         
         if response.status_code not in [200, 204]:
             logger.error(f"   Service Bus Complete API Error: {response.status_code}")
@@ -198,7 +222,7 @@ class ServiceBusQueueReceiver:
         
         # Don't raise for complete operations - log and continue
         if response.status_code in [200, 204]:
-            logger.info(f"   Message {message.message_id} completed successfully")
+            logger.debug(f"   Message {message.message_id} completed successfully")
         else:
             logger.warning(f"   Failed to complete message {message.message_id}, status: {response.status_code}")
         
@@ -214,18 +238,20 @@ class ServiceBusQueueReceiver:
             Exception: If API call fails after all retries
         """
         if not message.lock_token:
-            logger.warning("Cannot abandon message without lock token")
+            logger.warning(f"Cannot abandon message without lock token - Message ID: {message.message_id}")
+            logger.debug(f"Message details: {message}")
             return
             
         url = f"{self.client.namespace_url}/{self.queue_name}/messages/{message.message_id}/{message.lock_token}/abandon"
         headers = await self.client._get_headers()
         
-        logger.info(f"   START SERVICE BUS Abandon Message:")
-        logger.info(f"   Message ID: {message.message_id}")
+        logger.debug(f"   START SERVICE BUS Abandon Message:")
+        logger.debug(f"   Message ID: {message.message_id}")
+        logger.debug(f"   Lock Token: {message.lock_token}")
         
         response = requests.post(url, headers=headers, timeout=REQUEST_TIMEOUT_SECONDS)
         
-        logger.info(f"   Abandon Message Response - Status: {response.status_code}")
+        logger.debug(f"   Abandon Message Response - Status: {response.status_code}")
         
         if response.status_code not in [200, 204]:
             logger.error(f"   Service Bus Abandon API Error: {response.status_code}")
@@ -233,7 +259,7 @@ class ServiceBusQueueReceiver:
         
         # Don't raise for abandon operations - log and continue
         if response.status_code in [200, 204]:
-            logger.info(f"   Message {message.message_id} abandoned successfully")
+            logger.debug(f"   Message {message.message_id} abandoned successfully")
         else:
             logger.warning(f"   Failed to abandon message {message.message_id}, status: {response.status_code}")
         

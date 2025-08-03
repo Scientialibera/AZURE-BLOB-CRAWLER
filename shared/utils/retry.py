@@ -14,7 +14,8 @@ from typing import Callable, Any
 from inspect import iscoroutinefunction
 
 from config.settings import (
-    MAX_RETRIES, RETRY_DELAY_SECONDS, RATE_LIMIT_BASE_WAIT, RATE_LIMIT_MAX_WAIT
+    MAX_RETRIES, RETRY_DELAY_SECONDS, RATE_LIMIT_BASE_WAIT, RATE_LIMIT_MAX_WAIT, 
+    SKIP_RETRY_CODES, VERBOSE_RETRY_LOGGING
 )
 
 logger = logging.getLogger(__name__)
@@ -88,6 +89,31 @@ def _get_wait_time_from_error(error: Exception) -> int:
     return RATE_LIMIT_BASE_WAIT
 
 
+def _should_skip_retry(error: Exception) -> bool:
+    """
+    Check if the error should skip retry attempts (permanent failures).
+    
+    Args:
+        error: The exception to check
+        
+    Returns:
+        bool: True if retry should be skipped, False otherwise
+    """
+    # Check for HTTP status codes that shouldn't be retried
+    if hasattr(error, 'response') and error.response:
+        status_code = getattr(error.response, 'status_code', None)
+        if status_code in SKIP_RETRY_CODES:
+            return True
+    
+    # Check if the error message contains a status code we should skip
+    error_str = str(error).lower()
+    for code in SKIP_RETRY_CODES:
+        if f"{code}" in error_str or f"status: {code}" in error_str:
+            return True
+    
+    return False
+
+
 def retry_logic(max_retries: int = MAX_RETRIES, delay: int = RETRY_DELAY_SECONDS) -> Callable:
     """
     Retry decorator for sync and async functions with rate limit handling.
@@ -113,7 +139,15 @@ def retry_logic(max_retries: int = MAX_RETRIES, delay: int = RETRY_DELAY_SECONDS
                     try:
                         return await func(*args, **kwargs)
                     except Exception as e:
-                        if _is_rate_limit_error(e):
+                        # Check if this is a permanent failure that shouldn't be retried
+                        if _should_skip_retry(e):
+                            if VERBOSE_RETRY_LOGGING:
+                                logger.warning(
+                                    "Permanent error in %s (no retry): %s", 
+                                    func.__name__, e
+                                )
+                            raise
+                        elif _is_rate_limit_error(e):
                             wait_time = _get_wait_time_from_error(e)
                             logger.warning(
                                 "Rate limit hit in %s. Waiting %d seconds before retry.",
@@ -124,17 +158,19 @@ def retry_logic(max_retries: int = MAX_RETRIES, delay: int = RETRY_DELAY_SECONDS
                             continue
                         else:
                             attempt += 1
-                            logger.warning(
-                                "Attempt %d/%d failed in %s: %s", 
-                                attempt, max_retries, func.__name__, e
-                            )
+                            if VERBOSE_RETRY_LOGGING:
+                                logger.warning(
+                                    "Attempt %d/%d failed in %s: %s", 
+                                    attempt, max_retries, func.__name__, e
+                                )
                             if attempt < max_retries:
                                 await asyncio.sleep(delay)
                             else:
-                                logger.error(
-                                    "All %d attempts failed in %s. Raising exception.",
-                                    max_retries, func.__name__
-                                )
+                                if VERBOSE_RETRY_LOGGING:
+                                    logger.error(
+                                        "All %d attempts failed in %s. Raising exception.",
+                                        max_retries, func.__name__
+                                    )
                                 raise
                 raise RuntimeError(f"Async retry logic exhausted in {func.__name__}")
             
@@ -148,7 +184,15 @@ def retry_logic(max_retries: int = MAX_RETRIES, delay: int = RETRY_DELAY_SECONDS
                     try:
                         return func(*args, **kwargs)
                     except Exception as e:
-                        if _is_rate_limit_error(e):
+                        # Check if this is a permanent failure that shouldn't be retried
+                        if _should_skip_retry(e):
+                            if VERBOSE_RETRY_LOGGING:
+                                logger.warning(
+                                    "Permanent error in %s (no retry): %s", 
+                                    func.__name__, e
+                                )
+                            raise
+                        elif _is_rate_limit_error(e):
                             wait_time = _get_wait_time_from_error(e)
                             logger.warning(
                                 "Rate limit hit in %s. Waiting %d seconds before retry.",
@@ -159,17 +203,19 @@ def retry_logic(max_retries: int = MAX_RETRIES, delay: int = RETRY_DELAY_SECONDS
                             continue
                         else:
                             attempt += 1
-                            logger.warning(
-                                "Attempt %d/%d failed in %s: %s", 
-                                attempt, max_retries, func.__name__, e
-                            )
+                            if VERBOSE_RETRY_LOGGING:
+                                logger.warning(
+                                    "Attempt %d/%d failed in %s: %s", 
+                                    attempt, max_retries, func.__name__, e
+                                )
                             if attempt < max_retries:
                                 time.sleep(delay)
                             else:
-                                logger.error(
-                                    "All %d attempts failed in %s. Raising exception.",
-                                    max_retries, func.__name__
-                                )
+                                if VERBOSE_RETRY_LOGGING:
+                                    logger.error(
+                                        "All %d attempts failed in %s. Raising exception.",
+                                        max_retries, func.__name__
+                                    )
                                 raise
                 raise RuntimeError(f"Sync retry logic exhausted in {func.__name__}")
             

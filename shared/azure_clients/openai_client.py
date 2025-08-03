@@ -6,7 +6,7 @@ authentication and automatic retry logic.
 """
 
 import logging
-import requests
+import aiohttp
 from typing import List
 
 from azure_clients.auth import AzureClientBase
@@ -69,21 +69,21 @@ class DirectOpenAIClient(AzureClientBase):
         logger.info(f"   URL: {url}")
         logger.info(f"   Model: {model}")
         logger.info(f"   Text length: {len(text)} chars")
-        logger.info(f"   Authorization header: {HTTP_AUTH_BEARER_PREFIX} {self.token}..." if self.token else "   No token")
         
-        response = requests.post(url, headers=headers, json=payload, timeout=REQUEST_TIMEOUT_SECONDS)
-        
-        # Log response details
-        logger.info(f"   OpenAI Response - Status: {response.status_code}")
-        logger.info(f"   Response headers: {dict(response.headers)}")
-        
-        if response.status_code != 200:
-            logger.error(f"   OpenAI API Error: {response.status_code}")
-            logger.error(f"   Response text: {response.text}")
-        
-        response.raise_for_status()
-        
-        result = response.json()
-        embedding = result['data'][0]['embedding']
-        logger.info(f"   OpenAI Embeddings successful - Vector dimension: {len(embedding)}")
-        return embedding
+        # Use async HTTP client
+        timeout = aiohttp.ClientTimeout(total=REQUEST_TIMEOUT_SECONDS)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.post(url, headers=headers, json=payload) as response:
+                # Log response details
+                logger.info(f"   OpenAI Response - Status: {response.status}")
+                
+                if response.status != 200:
+                    response_text = await response.text()
+                    logger.error(f"   OpenAI API Error: {response.status}")
+                    logger.error(f"   Response text: {response_text}")
+                    response.raise_for_status()
+                
+                result = await response.json()
+                embedding = result['data'][0]['embedding']
+                logger.info(f"   OpenAI Embeddings successful - Vector dimension: {len(embedding)}")
+                return embedding

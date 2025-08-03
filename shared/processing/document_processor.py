@@ -12,6 +12,7 @@ from typing import Dict, Any, List, Optional
 
 from azure_clients import create_credential, DirectOpenAIClient, DirectSearchClient, DirectBlobClient
 from utils import TokenAwareChunker, retry_logic
+from utils.exceptions import BlobNotFoundError, ProcessingSkippedError
 from processing.file_extractor import FileExtractor
 from config.settings import (
     STORAGE_ACCOUNT_NAME, SEARCH_SERVICE_NAME, OPENAI_SERVICE_NAME, SEARCH_INDEX_NAME,
@@ -19,7 +20,8 @@ from config.settings import (
     CHUNK_MAX_TOKENS, EMBEDDING_MAX_TOKENS, SUPPORTED_DOCUMENT_EXTENSIONS,
     CONCURRENT_FILE_PROCESSING, EMBEDDING_VECTOR_DIMENSION, OPENAI_EMBEDDING_MODEL,
     SEARCH_ACTION_UPLOAD, DOCUMENT_ID_FIELD, DOCUMENT_CONTENT_FIELD, DOCUMENT_VECTOR_FIELD,
-    SEARCH_ACTION_FIELD, MAX_RETRIES, RETRY_DELAY_SECONDS
+    SEARCH_ACTION_FIELD, MAX_RETRIES, RETRY_DELAY_SECONDS, TOKEN_PRE_WARMING_ENABLED,
+    VERBOSE_AUTH_LOGGING, DELETE_BLOB_AFTER_PROCESSING
 )
 
 logger = logging.getLogger(__name__)
@@ -92,10 +94,79 @@ class DocumentProcessor:
                 logger.info(f"   INITIALIZED OpenAI client with endpoint {openai_endpoint}")
             
             logger.info("   All Azure clients initialized successfully")
+            
+            # Pre-warm all client tokens for faster processing (if enabled)
+            if TOKEN_PRE_WARMING_ENABLED:
+                await self.pre_warm_all_tokens()
+            else:
+                logger.info("   Token pre-warming disabled - tokens will be acquired on-demand")
                 
         except Exception as e:
             logger.error(f"   Failed to initialize clients: {e}")
             raise
+    
+    async def pre_warm_all_tokens(self):
+        """
+        Pre-warm tokens for all Azure clients to ensure they're ready for processing
+        
+        This method acquires tokens for all clients during startup so that
+        file processing doesn't have to wait for token acquisition.
+        """
+        if VERBOSE_AUTH_LOGGING:
+            logger.info("   Starting token pre-warming for all Azure clients...")
+        
+        pre_warming_tasks = []
+        
+        # Pre-warm blob client token
+        if self.blob_client:
+            if VERBOSE_AUTH_LOGGING:
+                logger.info("   Pre-warming Blob Storage token...")
+            pre_warming_tasks.append(
+                ("Blob Storage", self.blob_client.pre_warm_token())
+            )
+        
+        # Pre-warm search client token
+        if self.search_client:
+            if VERBOSE_AUTH_LOGGING:
+                logger.info("   Pre-warming Search token...")
+            pre_warming_tasks.append(
+                ("Azure AI Search", self.search_client.pre_warm_token())
+            )
+        
+        # Pre-warm OpenAI client token
+        if self.openai_client:
+            if VERBOSE_AUTH_LOGGING:
+                logger.info("   Pre-warming OpenAI token...")
+            pre_warming_tasks.append(
+                ("Azure OpenAI", self.openai_client.pre_warm_token())
+            )
+        
+        # Execute all pre-warming tasks concurrently
+        if pre_warming_tasks:
+            task_names = [name for name, _ in pre_warming_tasks]
+            tasks = [task for _, task in pre_warming_tasks]
+            
+            if VERBOSE_AUTH_LOGGING:
+                logger.info(f"   Executing concurrent token pre-warming for: {', '.join(task_names)}")
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            # Log results
+            successful = 0
+            for i, (name, result) in enumerate(zip(task_names, results)):
+                if isinstance(result, Exception):
+                    logger.warning(f"   Token pre-warming failed for {name}: {result}")
+                elif result:
+                    if VERBOSE_AUTH_LOGGING:
+                        logger.info(f"   Token pre-warming successful for {name}")
+                    successful += 1
+                else:
+                    logger.warning(f"   Token pre-warming returned False for {name}")
+            
+            if VERBOSE_AUTH_LOGGING:
+                logger.info(f"   Token pre-warming complete: {successful}/{len(task_names)} successful")
+        else:
+            if VERBOSE_AUTH_LOGGING:
+                logger.info("   No clients available for token pre-warming")
     
     @retry_logic(max_retries=MAX_RETRIES, delay=RETRY_DELAY_SECONDS)
     async def generate_embeddings(self, text: str) -> List[float]:
@@ -124,6 +195,7 @@ class DocumentProcessor:
                 truncated_tokens = tokens[:EMBEDDING_MAX_TOKENS]
                 text = self.chunker.tokenizer.decode(truncated_tokens)
             
+            logger.info('Sending Chunk to embedding model')
             # Generate embeddings using direct HTTP call
             return await self.openai_client.create_embeddings(text, OPENAI_EMBEDDING_MODEL)
             
@@ -159,6 +231,7 @@ class DocumentProcessor:
                     return chunk_index, chunk, embedding
             
             # Generate embeddings for all chunks concurrently
+            logger.info(f"Waiting for concurrent embedding generation")
             embedding_tasks = [
                 generate_chunk_embedding_with_semaphore(chunk, i) 
                 for i, chunk in enumerate(chunks)
@@ -268,6 +341,32 @@ class DocumentProcessor:
             processing_time = (datetime.utcnow() - start_time).total_seconds()
             logger.info(f"Successfully processed file: {blob_name} in {processing_time:.2f}s")
             
+            # Delete the blob after successful processing (if enabled)
+            if DELETE_BLOB_AFTER_PROCESSING:
+                try:
+                    if self.blob_client:
+                        delete_success = await self.blob_client.delete_blob(blob_name, container_name)
+                        if delete_success:
+                            logger.info(f"Successfully deleted blob: {blob_name} after processing")
+                        else:
+                            logger.warning(f"Failed to delete blob: {blob_name} after processing")
+                    else:
+                        logger.warning("Blob client not available for deletion")
+                except Exception as delete_error:
+                    # Log the error but don't fail the processing - the document was successfully indexed
+                    logger.error(f"Failed to delete blob {blob_name} after processing: {delete_error}")
+                    logger.info(f"Document {blob_name} was successfully processed and indexed, but blob deletion failed")
+            else:
+                logger.debug(f"Blob deletion disabled - keeping {blob_name} in storage")
+            
+        except BlobNotFoundError as e:
+            logger.warning(f"Blob not found, skipping processing: {e}")
+            # Re-raise to let calling code know this should be marked as processed, not failed
+            raise
+        except ProcessingSkippedError as e:
+            logger.info(f"Processing skipped: {e}")
+            # Re-raise to let calling code know this should be marked as processed, not failed
+            raise
         except Exception as e:
             logger.error(f"Error processing file {blob_name}: {e}")
             raise

@@ -75,16 +75,16 @@ try {
     Write-SuccessLog "Infrastructure validation passed - all critical components found"
 
     # Step 1: Build container image in Azure Container Registry (cloud-native)
-    Write-InfoLog "Building container image using Azure Container Registry (cloud build)..."
-    Push-Location src
+    Write-InfoLog "Building indexer container image using Azure Container Registry (cloud build)..."
+    # Build from root directory with dockerfile path specified
     try {
         # Set console encoding to UTF-8 to handle special characters
         $originalEncoding = [Console]::OutputEncoding
         [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
         
-        # Build without JSON output to avoid encoding issues
-        Write-InfoLog "Starting ACR build process..."
-        az acr build --registry $Config.AcrName --image "$($Config.AppName):latest" .
+        # Build from root directory but specify dockerfile path
+        Write-InfoLog "Starting ACR build process for indexer app from root directory..."
+        az acr build --registry $Config.AcrName --image "indexer-app:latest" --file "services/indexer_app/Dockerfile" .
         if ($LASTEXITCODE -ne 0) {
             Write-ErrorLog "ACR build failed with exit code: $LASTEXITCODE"
             Write-ErrorLog "This could be due to:"
@@ -97,7 +97,7 @@ try {
         Write-SuccessLog "Container image built successfully in the cloud"
         
         # Get the new image digest
-        $imageDigest = az acr repository show --name $Config.AcrName --image "$($Config.AppName):latest" --query "digest" -o tsv
+        $imageDigest = az acr repository show --name $Config.AcrName --image "indexer-app:latest" --query "digest" -o tsv
         if ($LASTEXITCODE -ne 0) {
             Write-WarningLog "Could not retrieve image digest, but build was successful"
         } else {
@@ -111,9 +111,6 @@ try {
         Write-ErrorLog "Container build failed: $_"
         exit 1
     }
-    finally {
-        Pop-Location
-    }
 
     # Step 2: Check if Container App already exists
     Write-InfoLog "Checking if Container App exists..."
@@ -121,11 +118,11 @@ try {
 
     if ($existingApp) {
         # Update existing app with specific image digest to force refresh
-        Write-InfoLog "Updating existing Container App '$($Config.AppName)' with new image digest..."
+        Write-InfoLog "Updating existing Container App '$($Config.AppName)' with new indexer image digest..."
         az containerapp update `
             --name $Config.AppName `
             --resource-group $Config.ResourceGroup `
-            --image "$($Config.AcrName).azurecr.io/$($Config.AppName)@$imageDigest"
+            --image "$($Config.AcrName).azurecr.io/indexer-app@$imageDigest"
         
         if ($LASTEXITCODE -ne 0) {
             throw "Container App update failed"
@@ -160,7 +157,7 @@ try {
             --name $Config.AppName `
             --resource-group $Config.ResourceGroup `
             --environment $Config.AcaEnv `
-            --image "$($Config.AcrName).azurecr.io/$($Config.AppName):latest" `
+            --image "$($Config.AcrName).azurecr.io/indexer-app:latest" `
             --registry-server "$($Config.AcrName).azurecr.io" `
             --registry-username $acrCreds.username `
             --registry-password $acrCreds.passwords[0].value `
@@ -228,7 +225,7 @@ try {
     Write-Host "App Name: $($Config.AppName)"
     Write-Host "Status: $($appDetails.properties.runningStatus)"
     Write-Host "Public URL: https://$($appDetails.properties.configuration.ingress.fqdn)"
-    Write-Host "Container Image: $($Config.AcrName).azurecr.io/$($Config.AppName):latest"
+    Write-Host "Container Image: $($Config.AcrName).azurecr.io/indexer-app:latest"
     Write-Host "Image Digest: $imageDigest"
     Write-Host ""
     Write-Host "=== TESTING ===" -ForegroundColor Yellow

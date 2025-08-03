@@ -18,8 +18,10 @@ import logging
 import sys
 import os
 
-# Add the src directory to the Python path
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# Add the shared directory to the Python path
+# Handle both Docker environment (/app/shared) and development environment
+shared_path = '/app/shared' if os.path.exists('/app/shared') else os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), 'shared')
+sys.path.insert(0, shared_path)
 
 # Configure logging
 logging.basicConfig(

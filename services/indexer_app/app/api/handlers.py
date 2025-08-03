@@ -7,11 +7,18 @@ manual processing, and webhook handling.
 
 import json
 import logging
+import sys
+import os
 from datetime import datetime
 from aiohttp import web
 
-from processing import DocumentProcessor
-from config.settings import (
+# Add shared directory to Python path
+# Handle both Docker environment (/app/shared) and development environment
+shared_path = '/app/shared' if os.path.exists('/app/shared') else os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))), 'shared')
+sys.path.insert(0, shared_path)
+
+from shared.processing import DocumentProcessor
+from shared.config.settings import (
     ALL_SUPPORTED_EXTENSIONS, CHUNK_MAX_TOKENS, EMBEDDING_MAX_TOKENS,
     ENCODING_MODEL, MAX_FILE_SIZE_MB, CONCURRENT_MESSAGE_PROCESSING,
     CONCURRENT_FILE_PROCESSING, MAX_RETRIES, RETRY_DELAY_SECONDS,

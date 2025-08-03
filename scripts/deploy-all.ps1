@@ -49,27 +49,40 @@ try {
     
     if ($InfrastructureOnly) {
         Write-InfoLog "Infrastructure-only deployment requested. Stopping here."
-        Write-InfoLog "To deploy the application later, run: .\scripts\deploy-container.ps1"
+        Write-InfoLog "To deploy the applications later, run: .\scripts\deploy-indexer.ps1 and .\scripts\deploy-mcp.ps1"
         if ($LASTEXITCODE -ne 0) {
-            Write-WarningLog "Note: You may need to manually assign RBAC permissions before the container app will work properly."
+            Write-WarningLog "Note: You may need to manually assign RBAC permissions before the container apps will work properly."
         }
         exit 0
     }
 
-    # Step 2: Deploy Container Application
+    # Step 2: Deploy Indexer Container Application
     Write-Host ""
-    Write-InfoLog "Step 2: Deploying container application (cloud-native build)..."
+    Write-InfoLog "Step 2: Deploying indexer container application (cloud-native build)..."
     
-    & ".\scripts\deploy-container.ps1"
+    & ".\scripts\deploy-indexer.ps1"
     
     if ($LASTEXITCODE -ne 0) {
-        Write-ErrorLog "Container deployment failed!"
+        Write-ErrorLog "Indexer container deployment failed!"
         exit 1
     }
     
-    Write-SuccessLog "Container deployment completed!"
+    Write-SuccessLog "Indexer container deployment completed!"
 
-    # Step 3: Final Summary
+    # Step 3: Deploy MCP Server Container Application
+    Write-Host ""
+    Write-InfoLog "Step 3: Deploying MCP server container application (cloud-native build)..."
+    
+    & ".\scripts\deploy-mcp.ps1"
+    
+    if ($LASTEXITCODE -ne 0) {
+        Write-ErrorLog "MCP server container deployment failed!"
+        exit 1
+    }
+    
+    Write-SuccessLog "MCP server container deployment completed!"
+
+    # Step 4: Final Summary
     Write-Host ""
     Write-Host "🎉 DEPLOYMENT COMPLETE!" -ForegroundColor Green
     Write-Host "========================" -ForegroundColor Green
@@ -81,14 +94,15 @@ try {
     Write-Host "  ✅ Azure Service Bus with queue"
     Write-Host "  ✅ Azure AI Search with vector index"
     Write-Host "  ✅ Azure OpenAI with text-embedding model"
-    Write-Host "  ✅ Azure Container Registry with your app image"
-    Write-Host "  ✅ Azure Container Apps with your application"
+    Write-Host "  ✅ Azure Container Registry with your app images"
+    Write-Host "  ✅ Azure Container Apps with indexer and MCP server applications"
     Write-Host "  ✅ Event Grid subscription for blob events"
     Write-Host ""
     Write-Host " Management commands:" -ForegroundColor Yellow
     Write-Host "  Check status:    .\scripts\get-deployment-status.ps1"
     Write-Host "  Validate infra:  .\scripts\validate-infrastructure.ps1"
     Write-Host "  View logs:       az containerapp logs show --name indexer-app --resource-group $Prefix-rg --follow"
+    Write-Host "  View MCP logs:   az containerapp logs show --name mcp-server --resource-group $Prefix-rg --follow"
     Write-Host ""
     Write-Host " Test your pipeline:" -ForegroundColor Yellow
     Write-Host "  Upload a file to trigger processing:"
@@ -114,6 +128,7 @@ catch {
     Write-Host "  3. Check the logs above for specific error details"
     Write-Host "  4. You can run individual scripts manually:"
     Write-Host "     - .\scripts\deploy-infrastructure.ps1"
-    Write-Host "     - .\scripts\deploy-container.ps1"
+    Write-Host "     - .\scripts\deploy-indexer.ps1"
+    Write-Host "     - .\scripts\deploy-mcp.ps1"
     exit 1
 }

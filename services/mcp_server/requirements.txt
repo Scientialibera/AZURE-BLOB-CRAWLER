@@ -1,0 +1,24 @@
+# Python dependencies for the MCP server
+azure-identity
+azure-search-documents
+azure-core
+openai
+aiohttp
+
+# MCP specific dependencies
+mcp
+fastmcp
+fastapi
+pydantic
+uvloop
+uvicorn
+starlette
+
+# JWT token validation
+PyJWT
+cryptography
+
+# Utility dependencies
+tiktoken
+requests
+pytz
