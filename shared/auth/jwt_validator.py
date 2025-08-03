@@ -4,6 +4,38 @@ Simple JWT validator that just decodes tokens without signature verification
 import jwt
 from typing import Dict, Any
 
+class AzureTokenValidator:
+    """
+    Azure JWT token validator class for validating Bearer tokens
+    
+    This class provides token validation functionality without signature verification,
+    focusing on extracting user information and validating tenant ID.
+    """
+    
+    def __init__(self, expected_tenant_id: str):
+        """
+        Initialize the token validator
+        
+        Args:
+            expected_tenant_id: The expected Azure tenant ID for validation
+        """
+        self.expected_tenant_id = expected_tenant_id
+    
+    def validate_token(self, authorization_header: str) -> Dict[str, Any]:
+        """
+        Validate Bearer token and extract user information
+        
+        Args:
+            authorization_header: The Authorization header containing Bearer token
+            
+        Returns:
+            Dict[str, Any]: User information extracted from token
+            
+        Raises:
+            ValueError: If token validation fails
+        """
+        return validate_bearer_token(authorization_header, self.expected_tenant_id)
+
 def validate_bearer_token(authorization_header: str, expected_tenant_id: str) -> Dict[str, Any]:
     """
     Simple JWT token decode without signature validation
