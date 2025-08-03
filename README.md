@@ -15,12 +15,12 @@ This solution implements a **high-performance, event-driven microservice archite
 │  Azure AI Search│◀───│ Container Apps  │◀───│  Service Bus    │
 │  (Vector Index) │    │ (Microservice)  │    │ (Concurrent)    │
 └─────────────────┘    └─────────────────┘    └─────────────────┘
-                                ▲
-                                │
-                     ┌─────────────────┐
-                     │ Azure OpenAI    │
-                     │(Custom Domain)  │
-                     └─────────────────┘
+                                ▲                       ▲
+                                │                       │
+                     ┌─────────────────┐    ┌─────────────────┐
+                     │ Azure OpenAI    │    │   MCP Server    │
+                     │(Custom Domain)  │    │ (Search API)    │
+                     └─────────────────┘    └─────────────────┘
 ```
 
 ## Key Features
@@ -57,6 +57,7 @@ This solution implements a **high-performance, event-driven microservice archite
 6. **Azure AI Search**: Indexes processed file content with vector embeddings
 7. **Azure OpenAI**: Generates embeddings for semantic search capabilities
 8. **Azure Container Registry**: Stores container images
+9. **MCP Server**: Model Context Protocol server for AI assistant integration
 
 ## Supported File Types
 
@@ -96,12 +97,15 @@ The service implements intelligent chunking based on file type:
 
 2. **Run the deployment script**:
    ```powershell
-   # PowerShell
+   # PowerShell - Deploy infrastructure and indexer
    .\scripts\deploy-all.ps1
+   
+   # Deploy MCP server for AI assistant integration
+   .\scripts\deploy-mcp.ps1
    
    # Or use individual scripts
    .\scripts\deploy-infrastructure.ps1
-   .\scripts\deploy-container.ps1
+   .\scripts\deploy-indexer.ps1
    ```
 
 3. **Verify deployment**:
@@ -135,6 +139,15 @@ The service implements intelligent chunking based on file type:
 3. **Verify indexing in Azure AI Search**:
    - Navigate to Azure Portal → Search Service → Search Explorer
    - Query for your document content
+
+4. **Test MCP Server** (for AI assistant integration):
+   ```powershell
+   # Test search capabilities
+   $token = az account get-access-token --tenant <tenant-id> --scope https://cognitiveservices.azure.com/.default --query accessToken --output tsv
+   
+   # Test search tool
+   Invoke-RestMethod -Uri "https://mcp-server.<your-domain>.azurecontainerapps.io/messages" -Method Post -ContentType "application/json" -Body '{"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "perform_search", "arguments": {"search_text": "test", "authorization": "Bearer '$token'"}}}'
+   ```
 
 ## Configuration
 

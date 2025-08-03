@@ -168,7 +168,7 @@ def create_credential() -> DefaultAzureCredential:
             managed_identity_client_id=AZURE_CLIENT_ID,  # optional
             exclude_interactive_browser_credential=True,  # Exclude interactive auth in container
             exclude_visual_studio_code_credential=True,   # Exclude VS Code auth in container
-            exclude_azure_cli_credential=True,            # Exclude CLI auth in container
+            exclude_azure_cli_credential=False,            # Exclude CLI auth in container
             exclude_environment_credential=False,         # Keep environment credential
             exclude_managed_identity_credential=False,    # Keep managed identity credential
         )

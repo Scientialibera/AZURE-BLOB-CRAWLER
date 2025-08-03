@@ -8,6 +8,7 @@ aiohttp
 # MCP specific dependencies
 mcp
 fastmcp
+fastapi
 pydantic
 uvloop
 uvicorn

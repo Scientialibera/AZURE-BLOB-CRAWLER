@@ -1,14 +1,14 @@
 # Azure Search MCP Server
 
-This MCP (Model Context Protocol) server provides search capabilities using Azure AI Search with JWT token authentication and configurable filtering.
+This MCP (Model Context Protocol) server provides search capabilities using Azure AI Search with JWT token authentication. Successfully deployed and tested on Azure Container Apps.
 
 ## Features
 
-- **Azure AI Search Integration**: Uses your existing Azure Search client to query indexed documents
+- **Azure AI Search Integration**: Direct search access to your indexed documents
 - **JWT Token Authentication**: Validates Azure tokens and checks tenant ID
-- **Flexible Filtering**: Supports Azure Search filter expressions for field-based filtering
-- **Configurable Results**: Excludes vector fields and allows field selection
-- **MCP Protocol**: Implements proper MCP server for integration with MCP clients
+- **Two Search Tools**: `perform_search` for queries and `get_all_docs` for document listing
+- **HTTP Transport**: Uses standard HTTP instead of SSE for better reliability
+- **MCP Protocol**: Fully compliant MCP server for integration with AI assistants
 
 ## Configuration
 
@@ -29,45 +29,46 @@ SEARCH_MAX_TOP=100
 EXCLUDED_FIELDS=vector
 ```
 
-## MCP Tool: azure_search
+## MCP Tools
 
-### Parameters
+### 1. perform_search
+Search Azure AI Search index with text queries and filters.
 
-- `query` (string, optional): Search query text for full-text search
-- `filters` (object, optional): Dictionary of field names to Azure Search filter expressions
-- `top` (integer, optional): Number of results to return (1-100, default: 10)
-- `select_fields` (array, optional): Specific fields to include in results
-- `authorization` (string, required): Bearer token for authentication
+**Parameters:**
+- `search_text` (string, optional): Search query text
+- `search_type` (string): "hybrid", "text", or "vector" (default: "hybrid")
+- `top` (integer): Number of results (default: 10, max: 100)
+- `select` (array, optional): Specific fields to return
+- `filter_query` (string, optional): Azure Search OData filter expression
+- `authorization` (string, required): Bearer token
+
+### 2. get_all_docs
+Retrieve all documents from the index with optional limiting.
+
+**Parameters:**
+- `top` (integer, optional): Number of documents to return. If not specified, returns ALL documents
+- `select` (array, optional): Fields to include (default: ["id"])
+- `authorization` (string, required): Bearer token
 
 ### Example Usage
-
-#### Text Search with Filters
 ```json
 {
-  "name": "azure_search",
+  "name": "perform_search",
   "arguments": {
-    "query": "artificial intelligence",
-    "filters": {
-      "category": "eq 'technology'",
-      "publishedDate": "ge 2023-01-01"
-    },
+    "search_text": "artificial intelligence",
+    "filter_query": "category eq 'technology'",
     "top": 5,
     "authorization": "Bearer eyJ0eXAiOiJKV1Q..."
   }
 }
 ```
 
-#### Filter-Only Search
 ```json
 {
-  "name": "azure_search",
+  "name": "get_all_docs", 
   "arguments": {
-    "filters": {
-      "status": "eq 'published'",
-      "author": "eq 'John Doe'"
-    },
     "top": 10,
-    "select_fields": ["id", "title", "content", "author"],
+    "select": ["id", "title", "content"],
     "authorization": "Bearer eyJ0eXAiOiJKV1Q..."
   }
 }
@@ -75,16 +76,27 @@ EXCLUDED_FIELDS=vector
 
 ## Azure Search Filter Expressions
 
-The `filters` parameter accepts Azure Search OData filter expressions:
+The `filter_query` parameter accepts Azure Search OData filter expressions as strings:
 
-- **Exact match**: `"eq 'value'"`
-- **Not equal**: `"ne 'value'"`
-- **Comparisons**: `"gt 100"`, `"ge 50"`, `"lt 1000"`, `"le 500"`
-- **In list**: `"search.in('value1,value2,value3')"`
-- **Text search**: `"search.ismatch('keyword')"`
-- **Date range**: `"ge 2023-01-01 and le 2023-12-31"`
-- **Multiple conditions**: `"eq 'published' and ge 2023-01-01"`
-- **Null checks**: `"eq null"`, `"ne null"`
+- **Exact match**: `"category eq 'technology'"`
+- **Not equal**: `"status ne 'draft'"`
+- **Comparisons**: `"score gt 100"`, `"price le 500"`
+- **Date range**: `"publishedDate ge 2023-01-01"`
+- **Multiple conditions**: `"status eq 'published' and publishedDate ge 2023-01-01"`
+- **In operator**: `"category in ('tech', 'science')"`
+- **Null checks**: `"description ne null"`
+
+## Azure Search Filter Expressions
+
+The `filter_query` parameter accepts Azure Search OData filter expressions as strings:
+
+- **Exact match**: `"category eq 'technology'"`
+- **Not equal**: `"status ne 'draft'"`
+- **Comparisons**: `"score gt 100"`, `"price le 500"`
+- **Date range**: `"publishedDate ge 2023-01-01"`
+- **Multiple conditions**: `"status eq 'published' and publishedDate ge 2023-01-01"`
+- **In operator**: `"category in ('tech', 'science')"`
+- **Null checks**: `"description ne null"`
 
 ## Authentication
 
@@ -130,25 +142,18 @@ Example token payload:
 ## Health Endpoints
 
 - `GET /health`: Health check with configuration status
-- `GET /ready`: Readiness check
+- `GET /ready`: Readiness check  
 - `GET /`: Root endpoint (same as health)
+- `POST /messages`: MCP protocol endpoint for tool calls
 
-## Development
+## Deployment
 
-### Local Testing
+The server is deployed on Azure Container Apps at:
+- **URL**: `https://mcp-server.blackwave-42d54423.eastus2.azurecontainerapps.io`
+- **Protocol**: HTTP transport on `/messages` endpoint
+- **Authentication**: Azure managed identity with tenant validation
 
-1. Set required environment variables
-2. Install dependencies: `pip install -r requirements.txt`
-3. Run the server: `python app/app.py`
-4. Test with: `python test_mcp_server.py`
-
-### Docker Deployment
-
-The server is designed to run in Azure Container Apps with:
-
-- Managed identity authentication
-- Shared volume for common modules
-- Environment variables from deployment configuration
+Deploy using: `.\scripts\deploy-mcp.ps1`
 
 ## Error Handling
 

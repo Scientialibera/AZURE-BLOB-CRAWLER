@@ -127,7 +127,7 @@ DEFAULT_TIMEZONE = os.getenv('DEFAULT_TIMEZONE', 'US/Eastern')  # For logging ti
 # Logging verbosity controls
 VERBOSE_RETRY_LOGGING = os.getenv('VERBOSE_RETRY_LOGGING', 'false').lower() == 'true'  # Log all retry attempts
 VERBOSE_AUTH_LOGGING = os.getenv('VERBOSE_AUTH_LOGGING', 'false').lower() == 'true'  # Log token checking details
-VERBOSE_BATCH_LOGGING = os.getenv('VERBOSE_BATCH_LOGGING', 'false').lower() == 'true'  # Log detailed batch results
+VERBOSE_BATCH_LOGGING = os.getenv('VERBOSE_BATCH_LOGGING', 'True').lower() == 'true'  # Log detailed batch results
 
 # ====== PROCESSING INTERVALS ======
 MAIN_LOOP_SLEEP_SECONDS = int(os.getenv('MAIN_LOOP_SLEEP_SECONDS', '3600'))  # 1 hour
