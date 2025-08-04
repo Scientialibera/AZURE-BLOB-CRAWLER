@@ -139,4 +139,5 @@ MCP_SERVER_VERSION = os.getenv('MCP_SERVER_VERSION', '1.0.0')
 MCP_PORT = int(os.getenv('MCP_PORT', '8080'))  # MCP server port
 SEARCH_DEFAULT_TOP = int(os.getenv('SEARCH_DEFAULT_TOP', '10'))  # Default number of search results
 SEARCH_MAX_TOP = int(os.getenv('SEARCH_MAX_TOP', '100'))  # Maximum number of search results
+SEARCH_ALL_DOCS_MAX = int(os.getenv('SEARCH_ALL_DOCS_MAX', '100000'))  # Maximum number of documents for get-all-docs
 EXCLUDED_FIELDS = os.getenv('EXCLUDED_FIELDS', 'vector').split(',')  # Fields to exclude from search results
