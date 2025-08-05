@@ -19,7 +19,7 @@ from auth.jwt_validator import validate_bearer_token
 from config.settings import (
     SEARCH_SERVICE_NAME, SEARCH_INDEX_NAME, AZURE_SEARCH_SCOPE, SEARCH_ENDPOINT_SUFFIX,
     AZURE_TENANT_ID, MCP_SERVER_NAME, MCP_SERVER_VERSION,
-    SEARCH_DEFAULT_TOP, SEARCH_MAX_TOP, SEARCH_ALL_DOCS_MAX, EXCLUDED_FIELDS, MCP_PORT,
+    SEARCH_DEFAULT_TOP, SEARCH_MAX_TOP, EXCLUDED_FIELDS, MCP_PORT,
     OPENAI_SERVICE_NAME, AZURE_COGNITIVE_SCOPE,
     OPENAI_ENDPOINT_BASE, OPENAI_EMBEDDING_MODEL
 )
@@ -135,49 +135,6 @@ async def azure_search(
     }, indent=2, default=str)
 
 
-@mcp.tool()
-async def get_all_docs(
-    max_docs: Optional[int] = SEARCH_ALL_DOCS_MAX,
-    ctx: Context = None
-) -> str:
-    """Get all document IDs from the search index using a wildcard search."""
-    auth = get_bearer_token()
-    if not auth:
-        return "Error: Missing Authorization header"
-    
-    try:
-        user_info = validate_bearer_token(auth, AZURE_TENANT_ID)
-    except Exception as e:
-        return f"Authentication failed: {str(e)}"
-
-    await initialize_search_client()
-
-    # Limit the number of documents to retrieve
-    top = min(max_docs or SEARCH_ALL_DOCS_MAX, SEARCH_ALL_DOCS_MAX)
-
-    try:
-        # Perform a wildcard search to get all documents, selecting only the ID field
-        result = await search_client.search_text(
-            search_text="*",  # Wildcard to match all documents
-            top=top,
-            select=["id"],  # Only return the ID field
-            filter_query=None
-        )
-    except Exception as e:
-        return f"Search failed: {str(e)}"
-
-    # Extract only the IDs from the results
-    document_ids = [doc.get("id") for doc in result.documents if doc.get("id")]
-
-    return json.dumps({
-        "total_count": result.count,
-        "returned_count": len(document_ids),
-        "document_ids": document_ids,
-        "user": user_info.get("username", "unknown"),
-        "max_requested": top
-    }, indent=2, default=str)
-
-
 # ────────────────────────── Health Endpoint
 @mcp.custom_route("/health", methods=["GET"])
 async def health(request):
@@ -195,8 +152,6 @@ async def health(request):
         "search_configured": bool(SEARCH_SERVICE_NAME),
         "openai_enabled": bool(OPENAI_SERVICE_NAME),
         "transport": "http",
-        "available_tools": ["azure_search", "get_all_docs"],
-        "max_all_docs": SEARCH_ALL_DOCS_MAX
     })
 
 

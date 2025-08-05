@@ -13,7 +13,7 @@ from azure_clients.auth import AzureClientBase
 from utils.retry import retry_logic
 from config.settings import (
     OPENAI_API_VERSION, OPENAI_EMBEDDING_MODEL, REQUEST_TIMEOUT_SECONDS,
-    MAX_RETRIES, RETRY_DELAY_SECONDS, HTTP_AUTH_BEARER_PREFIX
+    MAX_RETRIES, RETRY_DELAY_SECONDS
 )
 
 logger = logging.getLogger(__name__)
