@@ -122,12 +122,18 @@ try {
         az containerapp update `
             --name $Config.AppName `
             --resource-group $Config.ResourceGroup `
-            --image "$($Config.AcrName).azurecr.io/indexer-app@$imageDigest"
+            --image "$($Config.AcrName).azurecr.io/indexer-app@$imageDigest" `
+            --min-replicas 0 `
+            --max-replicas 3 `
+            --scale-rule-name "servicebus-queue-rule" `
+            --scale-rule-type "azure-servicebus" `
+            --scale-rule-metadata "queueName=$($Config.QueueName)" "namespace=$($Config.ServiceBusNamespace)" "messageCount=10" `
+            --scale-rule-identity $Config.ManagedIdentityId
         
         if ($LASTEXITCODE -ne 0) {
             throw "Container App update failed"
         }
-        Write-SuccessLog "Container App updated successfully with new image"
+        Write-SuccessLog "Container App updated successfully with new image and scaling rules"
         
         # Get the new revision name and restart it to ensure fresh deployment
         Write-InfoLog "Restarting Container App to ensure fresh deployment..."
@@ -163,11 +169,15 @@ try {
             --registry-password $acrCreds.passwords[0].value `
             --target-port 50051 `
             --ingress external `
-            --min-replicas 1 `
+            --min-replicas 0 `
             --max-replicas 3 `
             --cpu 0.5 `
             --memory 1Gi `
             --user-assigned $Config.ManagedIdentityId `
+            --scale-rule-name "servicebus-queue-rule" `
+            --scale-rule-type "azure-servicebus" `
+            --scale-rule-metadata "queueName=$($Config.QueueName)" "namespace=$($Config.ServiceBusNamespace)" "messageCount=10" `
+            --scale-rule-identity $Config.ManagedIdentityId `
             --env-vars "AZURE_STORAGE_ACCOUNT_NAME=$($Config.StorageAccount)" "AZURE_SEARCH_SERVICE_NAME=$($Config.SearchService)" "AZURE_OPENAI_SERVICE_NAME=$($Config.OpenAIService)" "SERVICEBUS_NAMESPACE=$($Config.ServiceBusNamespace)" "SERVICEBUS_QUEUE_NAME=$($Config.QueueName)" "AZURE_SEARCH_INDEX_NAME=documents" "CHUNK_MAX_TOKENS=4000" "EMBEDDING_MAX_TOKENS=8000" "MAX_FILE_SIZE_MB=100" "AZURE_CLIENT_ID=$($Config.ManagedIdentityClientId)"
 
         if ($LASTEXITCODE -ne 0) {

@@ -256,6 +256,7 @@ try {
             --resource-group $ResourceGroup `
             --max-delivery-count 10 `
             --default-message-time-to-live P14D `
+            --lock-duration PT30S `
             --output table
         if ($LASTEXITCODE -ne 0) {
             Write-ErrorLog "Failed to create Service Bus queue: $QueueName"

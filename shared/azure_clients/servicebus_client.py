@@ -262,6 +262,34 @@ class ServiceBusQueueReceiver:
             logger.debug(f"   Message {message.message_id} abandoned successfully")
         else:
             logger.warning(f"   Failed to abandon message {message.message_id}, status: {response.status_code}")
+    
+    @retry_logic(max_retries=MAX_RETRIES, delay=RETRY_DELAY_SECONDS)
+    async def renew_message_lock(self, message: 'ServiceBusMessage') -> None:
+        """
+        Renew the lock on a message to extend processing time
+        
+        Args:
+            message: Message to renew lock for
+            
+        Raises:
+            Exception: If API call fails after all retries
+        """
+        if not message.lock_token:
+            logger.warning(f"Cannot renew lock for message without lock token - Message ID: {message.message_id}")
+            return
+            
+        url = f"{self.client.namespace_url}/{self.queue_name}/messages/{message.message_id}/{message.lock_token}/renew"
+        headers = await self.client._get_headers()
+        
+        logger.debug(f"   Renewing lock for message {message.message_id}")
+        
+        response = requests.post(url, headers=headers, timeout=REQUEST_TIMEOUT_SECONDS)
+        
+        if response.status_code in [200, 204]:
+            logger.debug(f"   Lock renewed successfully for message {message.message_id}")
+        else:
+            logger.warning(f"   Failed to renew lock for message {message.message_id}, status: {response.status_code}")
+            # Don't raise - let processing continue with original lock
         
     async def close(self):
         """Close the queue receiver"""
