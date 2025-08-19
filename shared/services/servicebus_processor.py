@@ -16,7 +16,8 @@ from utils.exceptions import BlobNotFoundError, ProcessingSkippedError, TokenAcq
 from config.settings import (
     SERVICEBUS_NAMESPACE, SERVICEBUS_QUEUE_NAME, SERVICEBUS_ENDPOINT_SUFFIX,
     SERVICEBUS_MAX_MESSAGES, SERVICEBUS_WAIT_TIME, CONCURRENT_MESSAGE_PROCESSING,
-    ERROR_RETRY_SLEEP_SECONDS, TOKEN_PRE_WARMING_ENABLED, VERBOSE_BATCH_LOGGING
+    ERROR_RETRY_SLEEP_SECONDS, TOKEN_PRE_WARMING_ENABLED, VERBOSE_BATCH_LOGGING,
+    SERVICEBUS_LOCK_RENEWAL_ENABLED, SERVICEBUS_LOCK_RENEWAL_INTERVAL
 )
 
 logger = logging.getLogger(__name__)
@@ -146,7 +147,7 @@ class ServiceBusProcessor:
 
     async def _process_single_message(self, msg) -> bool:
         """
-        Process a single Service Bus message
+        Process a single Service Bus message with lock renewal
         
         Args:
             msg: Service Bus message to process
@@ -156,8 +157,13 @@ class ServiceBusProcessor:
         """
         blob_name = "unknown"  # Initialize with default value for logging
         container_name = "unknown"
+        lock_renewal_task = None
         
         try:
+            # Start lock renewal task for long-running processing (if enabled)
+            if SERVICEBUS_LOCK_RENEWAL_ENABLED:
+                lock_renewal_task = asyncio.create_task(self._renew_message_lock(msg))
+            
             # Parse message body
             message_body = str(msg)
             logger.info(f"Processing message: {message_body}")
@@ -173,9 +179,6 @@ class ServiceBusProcessor:
                 return True
             
             # Extract blob information
-            # blob_name = None  # Remove this line since we initialized above
-            # container_name = None  # Remove this line since we initialized above
-            
             # Handle different message formats
             if isinstance(message_data, list) and len(message_data) > 0:
                 # Event Grid event format
@@ -245,6 +248,40 @@ class ServiceBusProcessor:
             except Exception as abandon_error:
                 logger.error(f"Failed to abandon message: {abandon_error}")
             return False
+        finally:
+            # Cancel lock renewal task (if enabled and exists)
+            if SERVICEBUS_LOCK_RENEWAL_ENABLED and lock_renewal_task and not lock_renewal_task.done():
+                lock_renewal_task.cancel()
+                try:
+                    await lock_renewal_task
+                except asyncio.CancelledError:
+                    pass
+
+    async def _renew_message_lock(self, msg):
+        """
+        Continuously renew message lock until processing is complete
+        
+        Args:
+            msg: Service Bus message to renew lock for
+        """
+        try:
+            while True:
+                # Renew lock at configurable interval (default every 20 seconds)
+                await asyncio.sleep(SERVICEBUS_LOCK_RENEWAL_INTERVAL)
+                try:
+                    if hasattr(self.servicebus_receiver, 'renew_message_lock'):
+                        await self.servicebus_receiver.renew_message_lock(msg)
+                        logger.debug(f"Renewed lock for message {msg.message_id}")
+                    else:
+                        # If renew method not available, just log
+                        logger.debug(f"Lock renewal not supported for message {msg.message_id}")
+                        break
+                except Exception as e:
+                    logger.warning(f"Failed to renew lock for message {msg.message_id}: {e}")
+                    break
+        except asyncio.CancelledError:
+            logger.debug(f"Lock renewal cancelled for message {msg.message_id}")
+            raise
 
     async def stop_processing(self):
         """Stop Service Bus message processing"""

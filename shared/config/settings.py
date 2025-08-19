@@ -79,6 +79,10 @@ EMBEDDING_FALLBACK_TOKEN_RATIO = int(os.getenv('EMBEDDING_FALLBACK_TOKEN_RATIO',
 # ====== SERVICE BUS CONFIGURATION ======
 SERVICEBUS_MAX_MESSAGES = int(os.getenv('SERVICEBUS_MAX_MESSAGES', '10'))  # Max messages per batch
 SERVICEBUS_WAIT_TIME = int(os.getenv('SERVICEBUS_WAIT_TIME', '5'))  # Wait time in seconds
+SERVICEBUS_LOCK_RENEWAL_ENABLED = os.getenv('SERVICEBUS_LOCK_RENEWAL_ENABLED', 'true').lower() == 'true'  # Enable automatic lock renewal
+SERVICEBUS_LOCK_RENEWAL_INTERVAL = int(os.getenv('SERVICEBUS_LOCK_RENEWAL_INTERVAL', '20'))  # Lock renewal interval in seconds
+SERVICEBUS_LOCK_DURATION = int(os.getenv('SERVICEBUS_LOCK_DURATION', '30'))  # Default lock duration in seconds
+SERVICEBUS_MAX_DELIVERY_COUNT = int(os.getenv('SERVICEBUS_MAX_DELIVERY_COUNT', '10'))  # Max delivery attempts before dead letter
 
 # ====== CONCURRENT PROCESSING ======
 CONCURRENT_MESSAGE_PROCESSING = int(os.getenv('CONCURRENT_MESSAGE_PROCESSING', '5'))  # Number of concurrent message processing tasks
