@@ -1,0 +1,109 @@
+{
+  "mcpVersion": "2024-11-05",
+  "name": "azure-search-mcp",
+  "version": "1.0.0",
+  "description": "Azure AI Search MCP server for semantic search and document retrieval",
+  "author": "Scientialibera",
+  "license": "MIT",
+  "homepage": "https://github.com/Scientialibera/AZURE-BLOB-CRAWLER",
+  "server": {
+    "command": "python",
+    "args": ["-m", "app.app"],
+    "env": {
+      "AZURE_SEARCH_SERVICE_NAME": "${AZURE_SEARCH_SERVICE_NAME}",
+      "AZURE_SEARCH_INDEX_NAME": "${AZURE_SEARCH_INDEX_NAME:-documents}",
+      "AZURE_OPENAI_SERVICE_NAME": "${AZURE_OPENAI_SERVICE_NAME}",
+      "AZURE_TENANT_ID": "${AZURE_TENANT_ID}",
+      "AZURE_CLIENT_ID": "${AZURE_CLIENT_ID}",
+      "MCP_PORT": "${MCP_PORT:-8080}"
+    }
+  },
+  "capabilities": {
+    "tools": {
+      "listChanged": false
+    },
+    "resources": {
+      "subscribe": false,
+      "listChanged": false
+    },
+    "prompts": {
+      "listChanged": false
+    },
+    "logging": {}
+  },
+  "tools": [
+    {
+      "name": "azure_search",
+      "description": "Search Azure AI Search index with text, vector, or hybrid search capabilities",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Search query text. Required for vector and hybrid search."
+          },
+          "filters": {
+            "type": "object",
+            "description": "OData filters to apply to the search",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "top": {
+            "type": "integer",
+            "description": "Number of results to return (max 100)",
+            "minimum": 1,
+            "maximum": 100,
+            "default": 10
+          },
+          "select_fields": {
+            "type": "array",
+            "description": "Specific fields to return in results",
+            "items": {
+              "type": "string"
+            }
+          },
+          "search_type": {
+            "type": "string",
+            "description": "Type of search to perform",
+            "enum": ["text", "vector", "hybrid"],
+            "default": "text"
+          }
+        }
+      }
+    },
+    {
+      "name": "get_all_docs",
+      "description": "Retrieve all document IDs from the search index",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "max_docs": {
+            "type": "integer",
+            "description": "Maximum number of document IDs to return",
+            "minimum": 1,
+            "maximum": 100000,
+            "default": 100000
+          }
+        }
+      }
+    }
+  ],
+  "resources": [],
+  "prompts": [],
+  "transport": {
+    "type": "http",
+    "host": "0.0.0.0",
+    "port": 8080,
+    "path": "/mcp"
+  },
+  "authentication": {
+    "required": true,
+    "type": "bearer",
+    "description": "Requires Azure AD bearer token with appropriate permissions for Azure Search and OpenAI services"
+  },
+  "health": {
+    "endpoint": "/health",
+    "description": "Health check endpoint that validates authentication and service configuration"
+  }
+}

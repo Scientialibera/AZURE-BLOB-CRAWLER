@@ -200,6 +200,39 @@ async def health(request):
     })
 
 
+# ────────────────────────── MCP Configuration Endpoint
+@mcp.custom_route("/mcp-config", methods=["GET"])
+async def mcp_config(request):
+    """Return MCP server configuration for client discovery"""
+    return JSONResponse({
+        "mcpVersion": "2024-11-05",
+        "name": MCP_SERVER_NAME,
+        "version": MCP_SERVER_VERSION,
+        "description": "Azure AI Search MCP server for semantic search and document retrieval",
+        "capabilities": {
+            "tools": {"listChanged": False},
+            "resources": {"subscribe": False, "listChanged": False},
+            "prompts": {"listChanged": False},
+            "logging": {}
+        },
+        "tools": [
+            {
+                "name": "azure_search",
+                "description": "Search Azure AI Search index with text, vector, or hybrid search capabilities"
+            },
+            {
+                "name": "get_all_docs", 
+                "description": "Retrieve all document IDs from the search index"
+            }
+        ],
+        "authentication": {
+            "required": True,
+            "type": "bearer",
+            "description": "Requires Azure AD bearer token"
+        }
+    })
+
+
 # ────────────────────────── Entry Point
 async def main():
     logger.info(f"Starting MCP Server: {MCP_SERVER_NAME} (v{MCP_SERVER_VERSION})")

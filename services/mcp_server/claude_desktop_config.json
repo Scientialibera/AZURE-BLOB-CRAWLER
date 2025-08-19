@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "azure-search-mcp": {
+      "command": "python",
+      "args": ["-m", "services.mcp_server.app.app"],
+      "cwd": "/path/to/AZURE-BLOB-CRAWLER",
+      "env": {
+        "AZURE_SEARCH_SERVICE_NAME": "your-search-service",
+        "AZURE_SEARCH_INDEX_NAME": "documents",
+        "AZURE_OPENAI_SERVICE_NAME": "your-openai-service",
+        "AZURE_TENANT_ID": "your-tenant-id",
+        "AZURE_CLIENT_ID": "your-client-id",
+        "MCP_PORT": "8080"
+      }
+    }
+  }
+}
