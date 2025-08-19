@@ -12,20 +12,23 @@ This solution implements a **high-performance, event-driven microservice archite
                                                         │
                                                         ▼
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│  Azure AI Search│◀───│ Container Apps  │◀───│  Service Bus    │
-│  (Vector Index) │    │ (Microservice)  │    │ (Concurrent)    │
+│  Azure AI Search│◀───│ Container Apps  │◀───│  KEDA Scaler    │
+│  (Vector Index) │    │(Auto-Scaling)   │    │(Queue-Based)    │
 └─────────────────┘    └─────────────────┘    └─────────────────┘
-                                ▲                       ▲
-                                │                       │
-                     ┌─────────────────┐    ┌─────────────────┐
-                     │ Azure OpenAI    │    │   MCP Server    │
-                     │(Custom Domain)  │    │ (Search API)    │
-                     └─────────────────┘    └─────────────────┘
+                               ▲                       
+                               │                       
+                      ┌─────────────────┐               
+                      │ Azure OpenAI    │               
+                      │(Custom Domain)  │               
+                      └─────────────────┘               
+
 ```
 
 ## Key Features
 
 ### **High-Performance Processing**
+- **KEDA Auto-Scaling**: Automatic container scaling based on Service Bus queue depth (0-3 replicas)
+- **Intelligent Lock Management**: Configurable message lock renewal for long-running processing
 - **Concurrent Message Processing**: Configurable parallel processing of Service Bus messages (default: 5 concurrent)
 - **Concurrent Embedding Generation**: Parallel embedding creation for document chunks (default: 3 concurrent) 
 - **Smart Rate Limiting**: Intelligent retry logic with automatic backoff for Azure
@@ -43,6 +46,8 @@ This solution implements a **high-performance, event-driven microservice archite
 - **Managed Identity Authentication**: Secure, keyless authentication throughout
 
 ### **Production-Ready Features**
+- **KEDA-Based Scaling**: Scales from 0-3 replicas based on queue depth (10 messages per replica)
+- **Configurable Lock Renewal**: Automatic message lock extension for long document processing
 - **Configurable Scaling**: Tune concurrency based on your Azure quotas
 - **Detailed Telemetry**: Comprehensive logging with performance metrics
 - **Manual Processing API**: Test endpoint for development and debugging
@@ -142,8 +147,8 @@ The service implements intelligent chunking based on file type:
 
 4. **Test MCP Server** (for AI assistant integration):
    ```powershell
-   # Test search capabilities
-   $token = az account get-access-token --tenant <tenant-id> --scope https://cognitiveservices.azure.com/.default --query accessToken --output tsv
+   # Test search capabilities via MCP server
+   $token = az account get-access-token --tenant <tenant-id> --scope https://search.azure.com/.default --query accessToken --output tsv
    
    # Test search tool
    Invoke-RestMethod -Uri "https://mcp-server.<your-domain>.azurecontainerapps.io/messages" -Method Post -ContentType "application/json" -Body '{"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "perform_search", "arguments": {"search_text": "test", "authorization": "Bearer '$token'"}}}'
@@ -159,6 +164,15 @@ None if ran from .\scripts\deploy-all.ps1
 # Concurrent processing (tune based on Azure quotas)
 CONCURRENT_MESSAGE_PROCESSING=5    # Service Bus message concurrency
 CONCURRENT_FILE_PROCESSING=3       # Embedding generation concurrency
+
+# KEDA auto-scaling settings (applied at deployment)
+# Queue-based scaling: 0-3 replicas, 10 messages per replica trigger
+
+# Service Bus lock management
+SERVICEBUS_LOCK_RENEWAL_ENABLED=true     # Enable automatic lock renewal
+SERVICEBUS_LOCK_RENEWAL_INTERVAL=20      # Lock renewal interval (seconds)
+SERVICEBUS_LOCK_DURATION=30              # Default lock duration (seconds)
+SERVICEBUS_MAX_DELIVERY_COUNT=10         # Max delivery attempts before dead letter
 
 # Retry and rate limiting
 MAX_RETRIES=3                      # Maximum retry attempts
@@ -251,11 +265,18 @@ Based on your Azure quotas and requirements:
 CONCURRENT_MESSAGE_PROCESSING=10
 CONCURRENT_FILE_PROCESSING=5
 CHUNK_MAX_TOKENS=2000
+SERVICEBUS_LOCK_RENEWAL_INTERVAL=15  # More aggressive lock renewal
 
 # Conservative configuration (lower quotas)
 CONCURRENT_MESSAGE_PROCESSING=2
 CONCURRENT_FILE_PROCESSING=1
 CHUNK_MAX_TOKENS=6000
+SERVICEBUS_LOCK_RENEWAL_ENABLED=false  # Disable if processing is fast
+
+# Long-running document processing
+SERVICEBUS_LOCK_RENEWAL_ENABLED=true
+SERVICEBUS_LOCK_RENEWAL_INTERVAL=10   # Frequent renewal
+SERVICEBUS_LOCK_DURATION=60           # Longer initial lock
 ```
 
 ## Troubleshooting
@@ -269,6 +290,8 @@ CHUNK_MAX_TOKENS=6000
 | **Authentication Failures** | Token errors, 401/403 responses | Verify managed identity RBAC assignments |
 | **Processing Stuck** | Messages in queue, no progress | Check container logs for specific errors |
 | **Embedding Failures** | Zero vectors in search index | Verify OpenAI custom domain and model deployment |
+| **Lock Timeout Issues** | Duplicate processing, lock errors | Enable `SERVICEBUS_LOCK_RENEWAL_ENABLED=true` |
+| **Scaling Issues** | KEDA not scaling up/down | Check Service Bus queue metrics and KEDA logs |
 
 ### **Diagnostic Commands**
 ```bash
@@ -298,7 +321,9 @@ curl -X POST "https://<openai-endpoint>/openai/deployments/text-embedding-ada-00
 | **High-Performance** (10/5) | ~800-1200 | 10 messages | ~1GB |
 
 ### **Auto-Scaling Behavior**
-- **Scale Trigger**: Service Bus queue length > 30 messages
-- **Scale Up**: Additional container instances (max 10)
-- **Scale Down**: After queue length < 5 for 5+ minutes
+- **Scale Trigger**: Service Bus queue length ≥ 10 messages per replica
+- **Scale Up**: Additional container instances (max 3 replicas)
+- **Scale Down**: After queue length < 10 for 5+ minutes  
+- **Scale to Zero**: When queue is empty for extended period
 - **Cold Start**: ~30-45 seconds for new container instances
+- **KEDA Polling**: Checks queue depth every 30 seconds
