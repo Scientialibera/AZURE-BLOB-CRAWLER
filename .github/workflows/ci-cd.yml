@@ -1,0 +1,241 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  AZURE_REGISTRY: ${{ secrets.AZURE_REGISTRY }}
+  RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP }}
+  INDEXER_APP_NAME: ${{ secrets.INDEXER_APP_NAME }}
+  MCP_SERVER_APP_NAME: ${{ secrets.MCP_SERVER_APP_NAME }}
+
+jobs:
+  test-indexer:
+    name: Test Indexer Service
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install dependencies
+      working-directory: ./services/indexer_app
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements-test.txt
+
+    - name: Run linting
+      working-directory: ./services/indexer_app
+      run: |
+        flake8 app/ --count --select=E9,F63,F7,F82 --show-source --statistics
+        flake8 app/ --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+
+    - name: Run tests
+      working-directory: ./services/indexer_app
+      run: |
+        pytest tests/ -v --tb=short
+
+  test-mcp:
+    name: Test MCP Server
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install dependencies
+      working-directory: ./services/mcp_server
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements-test.txt
+
+    - name: Run linting
+      working-directory: ./services/mcp_server
+      run: |
+        flake8 app/ --count --select=E9,F63,F7,F82 --show-source --statistics
+        flake8 app/ --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+
+    - name: Run tests
+      working-directory: ./services/mcp_server
+      run: |
+        pytest tests/ -v --tb=short
+
+  build-and-push-indexer:
+    name: Build & Push Indexer Image
+    runs-on: ubuntu-latest
+    needs: [test-indexer]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Azure Login
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+    - name: Login to Azure Container Registry
+      run: |
+        az acr login --name ${{ secrets.AZURE_REGISTRY }}
+
+    - name: Build and push Docker image
+      working-directory: ./services/indexer_app
+      run: |
+        IMAGE_TAG="${{ secrets.AZURE_REGISTRY }}.azurecr.io/indexer-app:${{ github.sha }}"
+        IMAGE_LATEST="${{ secrets.AZURE_REGISTRY }}.azurecr.io/indexer-app:latest"
+
+        docker build -t $IMAGE_TAG -t $IMAGE_LATEST .
+        docker push $IMAGE_TAG
+        docker push $IMAGE_LATEST
+
+        echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
+
+    - name: Update Container App
+      run: |
+        az containerapp update \
+          --name ${{ secrets.INDEXER_APP_NAME }} \
+          --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+          --image ${{ secrets.AZURE_REGISTRY }}.azurecr.io/indexer-app:${{ github.sha }}
+
+    - name: Verify deployment
+      run: |
+        echo "Waiting for deployment to complete..."
+        sleep 30
+
+        # Get the app URL
+        APP_URL=$(az containerapp show \
+          --name ${{ secrets.INDEXER_APP_NAME }} \
+          --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+          --query properties.configuration.ingress.fqdn \
+          --output tsv)
+
+        # Check health endpoint
+        HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" https://$APP_URL/health)
+
+        if [ $HTTP_CODE -eq 200 ]; then
+          echo "Indexer service deployed successfully"
+        else
+          echo "Indexer service health check failed (HTTP $HTTP_CODE)"
+          exit 1
+        fi
+
+  build-and-push-mcp:
+    name: Build & Push MCP Server Image
+    runs-on: ubuntu-latest
+    needs: [test-mcp]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Azure Login
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+    - name: Login to Azure Container Registry
+      run: |
+        az acr login --name ${{ secrets.AZURE_REGISTRY }}
+
+    - name: Build and push Docker image
+      working-directory: ./services/mcp_server
+      run: |
+        IMAGE_TAG="${{ secrets.AZURE_REGISTRY }}.azurecr.io/mcp-server:${{ github.sha }}"
+        IMAGE_LATEST="${{ secrets.AZURE_REGISTRY }}.azurecr.io/mcp-server:latest"
+
+        docker build -t $IMAGE_TAG -t $IMAGE_LATEST .
+        docker push $IMAGE_TAG
+        docker push $IMAGE_LATEST
+
+        echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
+
+    - name: Update Container App
+      run: |
+        az containerapp update \
+          --name ${{ secrets.MCP_SERVER_APP_NAME }} \
+          --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+          --image ${{ secrets.AZURE_REGISTRY }}.azurecr.io/mcp-server:${{ github.sha }}
+
+    - name: Verify deployment
+      run: |
+        echo "Waiting for deployment to complete..."
+        sleep 30
+
+        # Get the app URL
+        APP_URL=$(az containerapp show \
+          --name ${{ secrets.MCP_SERVER_APP_NAME }} \
+          --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+          --query properties.configuration.ingress.fqdn \
+          --output tsv)
+
+        # Check health endpoint
+        HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" https://$APP_URL/health)
+
+        if [ $HTTP_CODE -eq 200 ]; then
+          echo "MCP server deployed successfully"
+        else
+          echo "MCP server health check failed (HTTP $HTTP_CODE)"
+          exit 1
+        fi
+
+  notify-deployment:
+    name: Deployment Summary
+    runs-on: ubuntu-latest
+    needs: [build-and-push-indexer, build-and-push-mcp]
+    if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+    - name: Azure Login
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+    - name: Get deployment status
+      run: |
+        echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+
+        # Indexer status
+        if [ "${{ needs.build-and-push-indexer.result }}" == "success" ]; then
+          echo "**Indexer App**: Deployed successfully" >> $GITHUB_STEP_SUMMARY
+
+          INDEXER_URL=$(az containerapp show \
+            --name ${{ secrets.INDEXER_APP_NAME }} \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --query properties.configuration.ingress.fqdn \
+            --output tsv)
+          echo "   - URL: https://$INDEXER_URL" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "**Indexer App**: Deployment failed" >> $GITHUB_STEP_SUMMARY
+        fi
+
+        echo "" >> $GITHUB_STEP_SUMMARY
+
+        # MCP status
+        if [ "${{ needs.build-and-push-mcp.result }}" == "success" ]; then
+          echo "**MCP Server**: Deployed successfully" >> $GITHUB_STEP_SUMMARY
+
+          MCP_URL=$(az containerapp show \
+            --name ${{ secrets.MCP_SERVER_APP_NAME }} \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --query properties.configuration.ingress.fqdn \
+            --output tsv)
+          echo "   - URL: https://$MCP_URL" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "**MCP Server**: Deployment failed" >> $GITHUB_STEP_SUMMARY
+        fi
+
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Branch**: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
